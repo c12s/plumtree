@@ -1,6 +1,10 @@
 package plumtree
 
-import "github.com/c12s/hyparview/data"
+import (
+	"encoding/json"
+
+	"github.com/c12s/hyparview/hyparview"
+)
 
 type PlumtreeMessageType int8
 
@@ -16,11 +20,32 @@ type PlumtreeGossipMessage struct {
 	Round int
 }
 
+func (m PlumtreeGossipMessage) Serialize() ([]byte, error) {
+	payloadSerialized, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	payloadSerialized = append([]byte{byte(GOSSIP_MSG_TYPE)}, payloadSerialized...)
+	return payloadSerialized, nil
+}
+
+type PlumtreePruneMessage struct {
+}
+
+func (m PlumtreePruneMessage) Serialize() ([]byte, error) {
+	payloadSerialized, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	payloadSerialized = append([]byte{byte(PRUNE_MSG_TYPE)}, payloadSerialized...)
+	return payloadSerialized, nil
+}
+
 type PlumtreeIHaveMessage struct {
 	MsgIds [][]byte
 }
 
 type ReceivedPlumtreeMessage struct {
 	MsgSerialized []byte
-	Sender        data.Node
+	Sender        hyparview.Peer
 }
