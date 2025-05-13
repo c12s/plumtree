@@ -1,7 +1,6 @@
 package plumtree
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"hash/fnv"
@@ -20,8 +19,8 @@ type plumtree struct {
 	protocol         MembershipProtocol
 	eagerPushPeers   []hyparview.Peer
 	lazyPushPeers    []hyparview.Peer
-	receivedMsgs     [][]byte
-	missingMsgs      [][]byte
+	receivedMsgs     map[string]PlumtreeGossipMessage
+	missingMsgs      map[string][]hyparview.Peer
 	msgCh            chan ReceivedPlumtreeMessage
 	clientMsgHandler func([]byte) bool
 	msgSubscription  transport.Subscription
@@ -29,6 +28,7 @@ type plumtree struct {
 	lazyQueueLock    *sync.Mutex
 	lock             *sync.Mutex
 	logger           *log.Logger
+	timers           map[string][]chan struct{}
 }
 
 func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler func([]byte) bool, logger *log.Logger) *plumtree {
@@ -40,8 +40,8 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 		protocol:         protocol,
 		eagerPushPeers:   protocol.GetPeers(config.Fanout),
 		lazyPushPeers:    make([]hyparview.Peer, 0),
-		receivedMsgs:     make([][]byte, 0),
-		missingMsgs:      make([][]byte, 0),
+		receivedMsgs:     make(map[string]PlumtreeGossipMessage),
+		missingMsgs:      make(map[string][]hyparview.Peer),
 		msgCh:            make(chan ReceivedPlumtreeMessage),
 		clientMsgHandler: clientMsgHandler,
 		lazyQueue:        map[string][]PlumtreeGossipMessage{},
@@ -50,6 +50,8 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 		logger:           logger,
 	}
 	p.msgSubscription = p.msgSubscribe()
+	p.protocol.OnPeerUp(p.onPeerUp)
+	p.protocol.OnPeerDown(p.onPeerDown)
 	p.protocol.AddCustomMsgHandler(func(msg []byte, sender transport.Conn) error {
 		p.logger.Println("Custom message handler invoked")
 		msgBytes := make([]byte, 10)
@@ -106,7 +108,7 @@ func (p *plumtree) Broadcast(msg []byte) error {
 	defer p.lock.Unlock()
 	p.eagerPush(payloadSerialized, self)
 	p.lazyPush(payload, self)
-	p.receivedMsgs = append(p.receivedMsgs, msgId)
+	p.receivedMsgs[string(msgId)] = payload
 	p.logger.Println("Message broadcasted successfully")
 	return nil
 }
@@ -146,20 +148,22 @@ func (p *plumtree) sendAnnouncements() {
 		p.lazyQueueLock.Lock()
 		p.lock.Lock()
 		for nodeId, messages := range p.lazyQueue {
+			if len(messages) == 0 {
+				continue
+			}
 			ihaveMsg := PlumtreeIHaveMessage{
 				MsgIds: make([][]byte, 0),
 			}
 			for _, msg := range messages {
 				ihaveMsg.MsgIds = append(ihaveMsg.MsgIds, msg.MsgId)
 			}
-			ihaveMsgSerialized, err := json.Marshal(ihaveMsg)
+			ihaveMsgSerialized, err := ihaveMsg.Serialize()
 			if err != nil {
 				p.logger.Println("Error serializing IHave message:", err)
 				continue
 			}
-			ihaveMsgSerialized = append([]byte{byte(IHAVE_MSG_TYPE)}, ihaveMsgSerialized...)
 			var receiver *hyparview.Peer = nil
-			for _, peer := range p.eagerPushPeers {
+			for _, peer := range p.lazyPushPeers {
 				if peer.Node.ID != nodeId || peer.Conn == nil {
 					continue
 				}
@@ -171,12 +175,12 @@ func (p *plumtree) sendAnnouncements() {
 					Type:    data.CUSTOM,
 					Payload: ihaveMsgSerialized,
 				})
+				p.logger.Printf("Sent IHave message to peer %v\n", nodeId)
 				if err != nil {
 					p.logger.Println("Error sending IHave message to peer:", err)
 				}
 			}
 			p.lazyQueue[nodeId] = []PlumtreeGossipMessage{}
-			p.logger.Printf("Sent IHave message to peer %v\n", nodeId)
 		}
 		p.lazyQueueLock.Unlock()
 		p.lock.Unlock()
@@ -211,21 +215,43 @@ func (p *plumtree) msgSubscribe() transport.Subscription {
 				return
 			}
 			p.onPrune(pruneMsg, received.Sender)
+		} else if PlumtreeMessageType(int8(msgType)) == IHAVE_MSG_TYPE {
+			ihaveMsg := PlumtreeIHaveMessage{}
+			err := json.Unmarshal(msg, &ihaveMsg)
+			if err != nil {
+				p.logger.Println("Error unmarshaling IHave message:", err)
+				return
+			}
+			p.onIHave(ihaveMsg, received.Sender)
+		} else if PlumtreeMessageType(int8(msgType)) == GRAFT_MSG_TYPE {
+			graftMsg := PlumtreeGraftMessage{}
+			err := json.Unmarshal(msg, &graftMsg)
+			if err != nil {
+				p.logger.Println("Error unmarshaling graft message:", err)
+				return
+			}
+			p.onGraft(graftMsg, received.Sender)
 		}
 	})
 }
 
 func (p *plumtree) onGossip(msg PlumtreeGossipMessage, sender hyparview.Peer) {
 	p.logger.Println("Processing gossip message")
-	if !slices.ContainsFunc(p.receivedMsgs, func(msgId []byte) bool {
-		return bytes.Equal(msg.MsgId, msgId)
+	if !slices.ContainsFunc(mapKeys(p.receivedMsgs), func(msgId string) bool {
+		return msgId == string(msg.MsgId)
 	}) {
 		proceed := p.clientMsgHandler(msg.Msg)
 		if !proceed {
 			p.logger.Println("Quit broadcast signal from client during gossip")
 			return
 		}
-		p.receivedMsgs = append(p.receivedMsgs, msg.MsgId)
+		p.receivedMsgs[string(msg.MsgId)] = msg
+		if timers, ok := p.timers[string(msg.MsgId)]; ok {
+			for _, timer := range timers {
+				timer <- struct{}{}
+			}
+		}
+		delete(p.timers, string(msg.MsgId))
 		msg.Round++
 		payloadSerialized, err := msg.Serialize()
 		if err != nil {
@@ -286,4 +312,116 @@ func (p *plumtree) onPrune(msg PlumtreePruneMessage, sender hyparview.Peer) {
 		p.logger.Printf("Added peer %v to lazy push peers\n", sender.Node.ID)
 	}
 	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+}
+
+func (p *plumtree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
+	p.logger.Printf("Processing IHave message from peer: %v message IDs %v\n", sender.Node.ID, msg.MsgIds)
+	for _, msgId := range msg.MsgIds {
+		if slices.ContainsFunc(mapKeys(p.receivedMsgs), func(receivedMsgId string) bool {
+			return receivedMsgId == string(msgId)
+		}) {
+			continue
+		}
+		if _, ok := p.timers[string(msgId)]; !ok {
+			p.setTimer(msgId, p.config.MissingMsgTimeout, p.config.SecondaryMissingMsgTimeout)
+		}
+		p.missingMsgs[string(msgId)] = append(p.missingMsgs[string(msgId)], sender)
+	}
+}
+
+func (p *plumtree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
+	p.logger.Printf("Processing graft message from peer: %v message ID %v\n", sender.Node.ID, msg.MsgId)
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(peer hyparview.Peer) bool {
+		return peer.Node.ID == sender.Node.ID
+	})
+	if !slices.ContainsFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
+		return peer.Node.ID == sender.Node.ID
+	}) {
+		p.eagerPushPeers = append(p.eagerPushPeers, sender)
+		p.logger.Printf("Added peer %v to eager push peers\n", sender.Node.ID)
+	}
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	if msg, ok := p.receivedMsgs[string(msg.MsgId)]; ok {
+		payloadSerialized, err := msg.Serialize()
+		if err != nil {
+			p.logger.Println("Error serializing gossip message:", err)
+			return
+		}
+		err = sender.Conn.Send(data.Message{
+			Type:    data.CUSTOM,
+			Payload: payloadSerialized,
+		})
+		if err != nil {
+			p.logger.Println("Error sending gossip message:", err)
+		}
+	}
+}
+
+func (p *plumtree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
+	go func() {
+		quitCh := make(chan struct{})
+		p.timers[string(msgId)] = append(p.timers[string(msgId)], quitCh)
+		select {
+		case <-time.NewTicker(time.Duration(waitSec) * time.Second).C:
+			p.setTimer(msgId, secondaryWaitSec, secondaryWaitSec)
+			first := p.missingMsgs[string(msgId)][0]
+			p.missingMsgs[string(msgId)] = slices.Delete(p.missingMsgs[string(msgId)], 0, 1)
+			p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+			p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(peer hyparview.Peer) bool {
+				return peer.Node.ID == first.Node.ID
+			})
+			if !slices.ContainsFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
+				return peer.Node.ID == first.Node.ID
+			}) {
+				p.eagerPushPeers = append(p.eagerPushPeers, first)
+				p.logger.Printf("Added peer %v to eager push peers\n", first.Node.ID)
+			}
+			p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+			graftMsg := PlumtreeGraftMessage{}
+			graftMsgSerialized, err := graftMsg.Serialize()
+			if err != nil {
+				p.logger.Println("Error serializing graft message:", err)
+				return
+			}
+			err = first.Conn.Send(data.Message{
+				Type:    data.CUSTOM,
+				Payload: graftMsgSerialized,
+			})
+			if err != nil {
+				p.logger.Println("Error sending graft message:", err)
+			}
+		case <-quitCh:
+			return
+		}
+	}()
+}
+
+func (p *plumtree) onPeerUp(peer hyparview.Peer) {
+	p.logger.Printf("Processing onPeerUp peer: %v\n", peer.Node.ID)
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	if !slices.ContainsFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
+		return peer.Node.ID == peer.Node.ID
+	}) {
+		p.eagerPushPeers = append(p.eagerPushPeers, peer)
+		p.logger.Printf("Added peer %v to eager push peers\n", peer.Node.ID)
+	}
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+}
+
+func (p *plumtree) onPeerDown(peer hyparview.Peer) {
+	p.logger.Printf("Processing onPeerDown peer: %v\n", peer.Node.ID)
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	p.eagerPushPeers = slices.DeleteFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
+		return peer.Node.ID == peer.Node.ID
+	})
+	p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(peer hyparview.Peer) bool {
+		return peer.Node.ID == peer.Node.ID
+	})
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	for msgId := range p.missingMsgs {
+		p.missingMsgs[msgId] = slices.DeleteFunc(p.missingMsgs[msgId], func(p hyparview.Peer) bool {
+			return p.Node.ID == peer.Node.ID
+		})
+	}
 }

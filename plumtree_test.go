@@ -61,8 +61,10 @@ func TestTreeConstruction(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	plumtreeConfig := Config{
-		Fanout:           10,
-		AnnounceInterval: 10,
+		Fanout:                     10,
+		AnnounceInterval:           10,
+		MissingMsgTimeout:          5,
+		SecondaryMissingMsgTimeout: 5,
 	}
 	trees := []*plumtree{}
 	for _, node := range nodes {
