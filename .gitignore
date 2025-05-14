@@ -28,3 +28,6 @@ notes
 log
 
 .DS_Store
+
+.gv
+.gv.svg

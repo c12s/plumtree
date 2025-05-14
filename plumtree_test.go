@@ -17,7 +17,7 @@ import (
 )
 
 func TestTreeConstruction(t *testing.T) {
-	const numNodes = 10
+	const numNodes = 5
 	var nodes []*hyparview.HyParView
 	port := 8000
 	config := hyparview.Config{
@@ -89,17 +89,6 @@ func TestTreeConstruction(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	for _, tree := range trees {
-		log.Println("********************")
-		log.Println(tree.protocol.Self().ID)
-		log.Println(tree.receivedMsgs)
-		log.Println("****** peers ******")
-		for _, peer := range tree.eagerPushPeers {
-			log.Println(peer.Node.ID)
-		}
-		log.Println("********************")
-	}
-
 	g := graph.New(graph.StringHash, graph.Directed())
 	for _, tree := range trees {
 		g.AddVertex(tree.protocol.Self().ID)
@@ -109,9 +98,71 @@ func TestTreeConstruction(t *testing.T) {
 			g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
 		}
 	}
-	file, _ := os.Create("tree.gv")
+	file, _ := os.Create("tree_before.gv")
 	_ = draw.DOT(g, file)
-	cmd := exec.Command("dot", "-Tsvg", "-O", "tree.gv")
+	cmd := exec.Command("dot", "-Tsvg", "-O", "tree_before.gv")
+	log.Println(cmd.Args)
+	err = cmd.Run()
+	if err != nil {
+		log.Println("Error executing command:", err)
+	}
+
+	log.Println("node", nodes[1].Self().ID, "leaving")
+	nodes[1].Leave()
+	log.Println("node", nodes[1].Self().ID, "left")
+
+	time.Sleep(2 * time.Second)
+
+	g = graph.New(graph.StringHash, graph.Directed())
+	for _, tree := range trees {
+		g.AddVertex(tree.protocol.Self().ID)
+	}
+	for _, tree := range trees {
+		for _, peer := range tree.eagerPushPeers {
+			g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+		}
+	}
+	file, _ = os.Create("tree.gv")
+	_ = draw.DOT(g, file)
+	cmd = exec.Command("dot", "-Tsvg", "-O", "tree.gv")
+	log.Println(cmd.Args)
+	err = cmd.Run()
+	if err != nil {
+		log.Println("Error executing command:", err)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	err = trees[0].Broadcast([]byte("hello3"))
+	if err != nil {
+		log.Println(err)
+	}
+
+	time.Sleep(10 * time.Second)
+
+	for _, tree := range trees {
+		log.Println("********************")
+		log.Println(tree.protocol.Self().ID)
+		log.Println(mapKeys(tree.receivedMsgs))
+		log.Println("****** peers ******")
+		for _, peer := range tree.eagerPushPeers {
+			log.Println(peer.Node.ID)
+		}
+		log.Println("********************")
+	}
+
+	g = graph.New(graph.StringHash, graph.Directed())
+	for _, tree := range trees {
+		g.AddVertex(tree.protocol.Self().ID)
+	}
+	for _, tree := range trees {
+		for _, peer := range tree.eagerPushPeers {
+			g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+		}
+	}
+	file, _ = os.Create("tree_after.gv")
+	_ = draw.DOT(g, file)
+	cmd = exec.Command("dot", "-Tsvg", "-O", "tree_after.gv")
 	log.Println(cmd.Args)
 	err = cmd.Run()
 	if err != nil {

@@ -66,8 +66,8 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 			return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
 		})
 		if index < 0 {
-			p.logger.Println("Peer not found in eager or push peers")
-			return errors.New("could not find peer in eager or push peers")
+			p.logger.Println("Peer not found in eager or lazy push peers")
+			return errors.New("could not find peer in eager or lazy push peers")
 		}
 		peer := peers[index]
 		p.logger.Printf("%s received from %s\n", p.protocol.Self().ID, peer.Node.ID)
@@ -399,9 +399,11 @@ func (p *plumtree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
 
 func (p *plumtree) onPeerUp(peer hyparview.Peer) {
 	p.logger.Printf("Processing onPeerUp peer: %v\n", peer.Node.ID)
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
-	if !slices.ContainsFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
-		return peer.Node.ID == peer.Node.ID
+	if !slices.ContainsFunc(p.eagerPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
 	}) {
 		p.eagerPushPeers = append(p.eagerPushPeers, peer)
 		p.logger.Printf("Added peer %v to eager push peers\n", peer.Node.ID)
@@ -411,12 +413,14 @@ func (p *plumtree) onPeerUp(peer hyparview.Peer) {
 
 func (p *plumtree) onPeerDown(peer hyparview.Peer) {
 	p.logger.Printf("Processing onPeerDown peer: %v\n", peer.Node.ID)
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
-	p.eagerPushPeers = slices.DeleteFunc(p.eagerPushPeers, func(peer hyparview.Peer) bool {
-		return peer.Node.ID == peer.Node.ID
+	p.eagerPushPeers = slices.DeleteFunc(p.eagerPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
 	})
-	p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(peer hyparview.Peer) bool {
-		return peer.Node.ID == peer.Node.ID
+	p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
 	})
 	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	for msgId := range p.missingMsgs {
