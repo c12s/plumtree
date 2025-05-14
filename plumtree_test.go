@@ -86,8 +86,19 @@ func TestTreeConstruction(t *testing.T) {
 	}
 	time.Sleep(2 * time.Second)
 	nodes[1].Leave()
+	log.Println("node left")
 	time.Sleep(2 * time.Second)
 	err = trees[0].Broadcast([]byte("hello3"))
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(2 * time.Second)
+	err = trees[0].Broadcast([]byte("hello4"))
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(2 * time.Second)
+	err = trees[0].Broadcast([]byte("hello5"))
 	if err != nil {
 		log.Println(err)
 	}
