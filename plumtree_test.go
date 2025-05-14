@@ -24,7 +24,7 @@ func TestTreeConstruction(t *testing.T) {
 		HyParViewConfig: hyparview.HyParViewConfig{
 			Fanout:          2,
 			PassiveViewSize: 5,
-			ARWL:            2,
+			ARWL:            4,
 			PRWL:            2,
 			ShuffleInterval: 10,
 			Ka:              2,
@@ -37,7 +37,7 @@ func TestTreeConstruction(t *testing.T) {
 		config.ContactNodeID = config.NodeID
 		config.ContactNodeAddress = config.ListenAddress
 		config.NodeID = fmt.Sprintf("node%d", i+1)
-		config.ListenAddress = fmt.Sprintf("localhost:%d", port)
+		config.ListenAddress = fmt.Sprintf("127.0.0.1:%d", port)
 		self := data.Node{
 			ID:            config.NodeID,
 			ListenAddress: config.ListenAddress,
@@ -84,7 +84,13 @@ func TestTreeConstruction(t *testing.T) {
 	if err != nil {
 		log.Println(err)
 	}
-
+	time.Sleep(2 * time.Second)
+	nodes[1].Leave()
+	time.Sleep(2 * time.Second)
+	err = trees[0].Broadcast([]byte("hello3"))
+	if err != nil {
+		log.Println(err)
+	}
 	time.Sleep(2 * time.Second)
 
 	for _, tree := range trees {

@@ -50,6 +50,8 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 		logger:           logger,
 	}
 	p.msgSubscription = p.msgSubscribe()
+	p.protocol.OnPeerUp(p.onPeerUp)
+	p.protocol.OnPeerDown(p.onPeerDown)
 	p.protocol.AddCustomMsgHandler(func(msg []byte, sender transport.Conn) error {
 		p.logger.Println("Custom message handler invoked")
 		msgBytes := make([]byte, 10)
@@ -286,4 +288,37 @@ func (p *plumtree) onPrune(msg PlumtreePruneMessage, sender hyparview.Peer) {
 		p.logger.Printf("Added peer %v to lazy push peers\n", sender.Node.ID)
 	}
 	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+}
+
+func (p *plumtree) onPeerUp(peer hyparview.Peer) {
+	p.logger.Printf("Processing onPeerUp peer: %v\n", peer.Node.ID)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	if !slices.ContainsFunc(p.eagerPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
+	}) {
+		p.eagerPushPeers = append(p.eagerPushPeers, peer)
+		p.logger.Printf("Added peer %v to eager push peers\n", peer.Node.ID)
+	}
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+}
+
+func (p *plumtree) onPeerDown(peer hyparview.Peer) {
+	p.logger.Printf("Processing onPeerDown peer: %v\n", peer.Node.ID)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	p.eagerPushPeers = slices.DeleteFunc(p.eagerPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
+	})
+	p.lazyPushPeers = slices.DeleteFunc(p.lazyPushPeers, func(p hyparview.Peer) bool {
+		return p.Node.ID == peer.Node.ID
+	})
+	p.logger.Println("eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+	// for msgId := range p.missingMsgs {
+	// 	p.missingMsgs[msgId] = slices.DeleteFunc(p.missingMsgs, func(id []byte) bool {
+	// 		return p.Node.ID == peer.Node.ID
+	// 	})
+	// }
 }
