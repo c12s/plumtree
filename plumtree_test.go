@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 
@@ -17,12 +18,12 @@ import (
 )
 
 func TestTreeConstruction(t *testing.T) {
-	const numNodes = 10
+	const numNodes = 50
 	var nodes []*hyparview.HyParView
 	port := 8000
 	config := hyparview.Config{
 		HyParViewConfig: hyparview.HyParViewConfig{
-			Fanout:          2,
+			Fanout:          4,
 			PassiveViewSize: 5,
 			ARWL:            4,
 			PRWL:            2,
@@ -34,8 +35,8 @@ func TestTreeConstruction(t *testing.T) {
 
 	for i := 0; i < numNodes; i++ {
 		port = port + 1
-		config.ContactNodeID = config.NodeID
-		config.ContactNodeAddress = config.ListenAddress
+		config.ContactNodeID = "node1"
+		config.ContactNodeAddress = fmt.Sprintf("127.0.0.1:%d", 8001)
 		config.NodeID = fmt.Sprintf("node%d", i+1)
 		config.ListenAddress = fmt.Sprintf("127.0.0.1:%d", port)
 		self := data.Node{
@@ -61,8 +62,10 @@ func TestTreeConstruction(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	plumtreeConfig := Config{
-		Fanout:           10,
-		AnnounceInterval: 10,
+		Fanout:                     500,
+		AnnounceInterval:           5,
+		MissingMsgTimeout:          3,
+		SecondaryMissingMsgTimeout: 1,
 	}
 	trees := []*plumtree{}
 	for _, node := range nodes {
@@ -87,6 +90,10 @@ func TestTreeConstruction(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	nodes[1].Leave()
 	log.Println("node left")
+	nodes[3].Leave()
+	log.Println("node left")
+	nodes[5].Leave()
+	log.Println("node left")
 	time.Sleep(2 * time.Second)
 	err = trees[0].Broadcast([]byte("hello3"))
 	if err != nil {
@@ -102,12 +109,20 @@ func TestTreeConstruction(t *testing.T) {
 	if err != nil {
 		log.Println(err)
 	}
-	time.Sleep(2 * time.Second)
+	log.Println("NUM GOROUTINES", runtime.NumGoroutine())
+	time.Sleep(60 * time.Second)
+	err = trees[0].Broadcast([]byte("hello6"))
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(60 * time.Second)
 
 	for _, tree := range trees {
 		log.Println("********************")
 		log.Println(tree.protocol.Self().ID)
-		log.Println(tree.receivedMsgs)
+		for _, msg := range tree.receivedMsgs {
+			log.Println(msg.MsgId)
+		}
 		log.Println("****** peers ******")
 		for _, peer := range tree.eagerPushPeers {
 			log.Println(peer.Node.ID)
