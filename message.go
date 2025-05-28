@@ -16,9 +16,10 @@ const (
 )
 
 type PlumtreeGossipMessage struct {
-	Msg   []byte
-	MsgId []byte
-	Round int
+	Metadata TreeMetadata
+	Msg      []byte
+	MsgId    []byte
+	Round    int
 }
 
 func (m PlumtreeGossipMessage) Serialize() ([]byte, error) {
@@ -31,6 +32,7 @@ func (m PlumtreeGossipMessage) Serialize() ([]byte, error) {
 }
 
 type PlumtreePruneMessage struct {
+	Metadata TreeMetadata
 }
 
 func (m PlumtreePruneMessage) Serialize() ([]byte, error) {
@@ -43,7 +45,8 @@ func (m PlumtreePruneMessage) Serialize() ([]byte, error) {
 }
 
 type PlumtreeIHaveMessage struct {
-	MsgIds [][]byte
+	Metadata TreeMetadata
+	MsgIds   [][]byte
 }
 
 func (m PlumtreeIHaveMessage) Serialize() ([]byte, error) {
@@ -56,7 +59,8 @@ func (m PlumtreeIHaveMessage) Serialize() ([]byte, error) {
 }
 
 type PlumtreeGraftMessage struct {
-	MsgId []byte
+	Metadata TreeMetadata
+	MsgId    []byte
 }
 
 func (m PlumtreeGraftMessage) Serialize() ([]byte, error) {
@@ -69,6 +73,7 @@ func (m PlumtreeGraftMessage) Serialize() ([]byte, error) {
 }
 
 type ReceivedPlumtreeMessage struct {
+	Metadata      TreeMetadata
 	MsgSerialized []byte
 	Sender        hyparview.Peer
 }

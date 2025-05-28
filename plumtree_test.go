@@ -59,7 +59,8 @@ func TestTreeConstruction(t *testing.T) {
 		}
 	}
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(2 * time.Second)
+	// time.Sleep(10 * time.Second)
 
 	plumtreeConfig := Config{
 		Fanout:                     500,
@@ -72,22 +73,38 @@ func TestTreeConstruction(t *testing.T) {
 		logger := log.New(&lumberjack.Logger{
 			Filename: fmt.Sprintf("log/tree_%s.log", node.Self().ID),
 		}, node.Self().ID, log.LstdFlags|log.Lshortfile)
-		tree := NewPlumtree(plumtreeConfig, node, func(b []byte) bool {
+		tree := NewPlumtree(plumtreeConfig, node, func(m TreeMetadata, b []byte) bool {
+			log.Println(m)
 			log.Println(string(b))
 			return true
 		}, logger)
 		trees = append(trees, tree)
 	}
-	err := trees[0].Broadcast([]byte("hello"))
+	t1 := TreeMetadata{Id: "t1", Score: 123}
+	err := trees[0].ConstructTree(t1)
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast([]byte("hello2"))
+	err = trees[0].Broadcast(t1.Id, []byte("hello"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
+	t2 := TreeMetadata{Id: "t2", Score: 123}
+	err = trees[2].ConstructTree(t2)
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(2 * time.Second)
+	err = trees[0].Broadcast(t1.Id, []byte("hello2"))
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(2 * time.Second)
+
+	drawTrees(trees, "before")
+
 	nodes[1].Leave()
 	log.Println("node left")
 	nodes[3].Leave()
@@ -95,56 +112,95 @@ func TestTreeConstruction(t *testing.T) {
 	nodes[5].Leave()
 	log.Println("node left")
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast([]byte("hello3"))
+	err = trees[0].Broadcast(t2.Id, []byte("hello3"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast([]byte("hello4"))
+	err = trees[0].Broadcast(t2.Id, []byte("hello4"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast([]byte("hello5"))
+	err = trees[0].Broadcast(t1.Id, []byte("hello5"))
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("NUM GOROUTINES", runtime.NumGoroutine())
-	time.Sleep(60 * time.Second)
-	err = trees[0].Broadcast([]byte("hello6"))
+	time.Sleep(10 * time.Second)
+	// time.Sleep(60 * time.Second)
+	err = trees[0].Broadcast(t1.Id, []byte("hello6"))
 	if err != nil {
 		log.Println(err)
 	}
-	time.Sleep(60 * time.Second)
+	err = trees[0].Broadcast(t2.Id, []byte("hello7"))
+	if err != nil {
+		log.Println(err)
+	}
+	time.Sleep(10 * time.Second)
+	// time.Sleep(60 * time.Second)
 
 	for _, tree := range trees {
 		log.Println("********************")
 		log.Println(tree.protocol.Self().ID)
-		for _, msg := range tree.receivedMsgs {
-			log.Println(msg.MsgId)
-		}
-		log.Println("****** peers ******")
-		for _, peer := range tree.eagerPushPeers {
-			log.Println(peer.Node.ID)
+		for _, t := range tree.trees {
+			log.Println(t.metadata.Id)
+			for _, msg := range t.receivedMsgs {
+				log.Println(msg.MsgId)
+			}
+			log.Println("****** peers ******")
+			for _, peer := range t.eagerPushPeers {
+				log.Println(peer.Node.ID)
+			}
 		}
 		log.Println("********************")
 	}
 
-	g := graph.New(graph.StringHash, graph.Directed())
+	drawTrees(trees, "after")
+}
+
+func drawTrees(trees []*plumtree, suffix string) {
+	graphs := make(map[string]graph.Graph[string, string])
 	for _, tree := range trees {
-		g.AddVertex(tree.protocol.Self().ID)
-	}
-	for _, tree := range trees {
-		for _, peer := range tree.eagerPushPeers {
-			g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+		for _, t := range tree.trees {
+			g := graphs[t.metadata.Id]
+			if g == nil {
+				g = graph.New(graph.StringHash, graph.Directed())
+				graphs[t.metadata.Id] = g
+			}
 		}
 	}
-	file, _ := os.Create("tree.gv")
-	_ = draw.DOT(g, file)
-	cmd := exec.Command("dot", "-Tsvg", "-O", "tree.gv")
-	log.Println(cmd.Args)
-	err = cmd.Run()
-	if err != nil {
-		log.Println("Error executing command:", err)
+
+	for _, tree := range trees {
+		for _, t := range tree.trees {
+			g := graphs[t.metadata.Id]
+			if g == nil {
+				continue
+			}
+			g.AddVertex(tree.protocol.Self().ID)
+		}
+	}
+	for _, tree := range trees {
+		for _, t := range tree.trees {
+			g := graphs[t.metadata.Id]
+			if g == nil {
+				continue
+			}
+			for _, peer := range t.eagerPushPeers {
+				g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+			}
+		}
+	}
+
+	for id, g := range graphs {
+		fileName := fmt.Sprintf("tree_%s_%s.gv", id, suffix)
+		file, _ := os.Create(fileName)
+		_ = draw.DOT(g, file)
+		cmd := exec.Command("dot", "-Tsvg", "-O", fileName)
+		log.Println(cmd.Args)
+		err := cmd.Run()
+		if err != nil {
+			log.Println("Error executing command:", err)
+		}
 	}
 }
