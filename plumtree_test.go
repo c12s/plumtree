@@ -77,7 +77,7 @@ func TestTreeConstruction(t *testing.T) {
 			log.Println(m)
 			log.Println(string(b))
 			return true
-		}, logger)
+		}, logger, func(tree TreeMetadata) { logger.Println("tree constructed", tree.Id) }, func(tree TreeMetadata) { logger.Println("tree destroyed", tree.Id) })
 		trees = append(trees, tree)
 	}
 	t1 := TreeMetadata{Id: "t1", Score: 123}
@@ -112,12 +112,12 @@ func TestTreeConstruction(t *testing.T) {
 	nodes[5].Leave()
 	log.Println("node left")
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello3"))
+	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello3"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello4"))
+	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello4"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -133,7 +133,7 @@ func TestTreeConstruction(t *testing.T) {
 	if err != nil {
 		log.Println(err)
 	}
-	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello7"))
+	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello7"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -148,10 +148,11 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println("********************")
 		log.Println(tree.protocol.Self().ID)
 		for _, t := range tree.trees {
-			log.Println(t.metadata.Id)
-			for _, msg := range t.receivedMsgs {
-				log.Println(msg.MsgId)
-			}
+			log.Println("ID", t.metadata.Id)
+			log.Println("parent ID", t.parent)
+			// for _, msg := range t.receivedMsgs {
+			// 	log.Println(msg.MsgId)
+			// }
 			log.Println("****** peers ******")
 			for _, peer := range t.eagerPushPeers {
 				log.Println(peer.Node.ID)
@@ -197,7 +198,7 @@ func drawTrees(trees []*plumtree, suffix string) {
 	}
 
 	for id, g := range graphs {
-		fileName := fmt.Sprintf("tree_%s_%s.gv", id, suffix)
+		fileName := fmt.Sprintf("graphs/tree_%s_%s.gv", id, suffix)
 		file, _ := os.Create(fileName)
 		_ = draw.DOT(g, file)
 		cmd := exec.Command("dot", "-Tsvg", "-O", fileName)

@@ -1,0 +1,10 @@
+strict digraph {
+
+
+	"node4" [  weight=0 ];
+
+	"node6" [  weight=0 ];
+
+	"node2" [  weight=0 ];
+
+}

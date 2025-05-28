@@ -16,32 +16,36 @@ import (
 )
 
 type plumtree struct {
-	config           Config
-	protocol         MembershipProtocol
-	peers            []hyparview.Peer
-	trees            map[string]*Tree
-	deletedTrees     map[string]uint64
-	msgCh            chan ReceivedPlumtreeMessage
-	msgSubscription  transport.Subscription
-	clientMsgHandler func(tree TreeMetadata, msg []byte) bool
-	lock             *sync.Mutex
-	logger           *log.Logger
+	config                 Config
+	protocol               MembershipProtocol
+	peers                  []hyparview.Peer
+	trees                  map[string]*Tree
+	deletedTrees           map[string]uint64
+	msgCh                  chan ReceivedPlumtreeMessage
+	msgSubscription        transport.Subscription
+	clientMsgHandler       func(tree TreeMetadata, msg []byte) bool
+	treeConstructedHandler func(tree TreeMetadata)
+	treeDestroyedHandler   func(tree TreeMetadata)
+	lock                   *sync.Mutex
+	logger                 *log.Logger
 }
 
-func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler func(TreeMetadata, []byte) bool, logger *log.Logger) *plumtree {
+func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler func(TreeMetadata, []byte) bool, logger *log.Logger, treeConstructedHandler func(tree TreeMetadata), treeDestroyedHandler func(tree TreeMetadata)) *plumtree {
 	if clientMsgHandler == nil {
 		clientMsgHandler = func(m TreeMetadata, b []byte) bool { return true }
 	}
 	p := &plumtree{
-		config:           config,
-		protocol:         protocol,
-		peers:            protocol.GetPeers(config.Fanout),
-		trees:            make(map[string]*Tree),
-		deletedTrees:     make(map[string]uint64),
-		msgCh:            make(chan ReceivedPlumtreeMessage),
-		clientMsgHandler: clientMsgHandler,
-		lock:             new(sync.Mutex),
-		logger:           logger,
+		config:                 config,
+		protocol:               protocol,
+		peers:                  protocol.GetPeers(config.Fanout),
+		trees:                  make(map[string]*Tree),
+		deletedTrees:           make(map[string]uint64),
+		msgCh:                  make(chan ReceivedPlumtreeMessage),
+		clientMsgHandler:       clientMsgHandler,
+		treeConstructedHandler: treeConstructedHandler,
+		treeDestroyedHandler:   treeDestroyedHandler,
+		lock:                   new(sync.Mutex),
+		logger:                 logger,
 	}
 	p.msgSubscription = p.msgSubscribe()
 	p.protocol.OnPeerUp(p.onPeerUp)
@@ -78,6 +82,9 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 func (p *plumtree) ConstructTree(metadata TreeMetadata) error {
 	tree := NewTree(p.config, metadata, p.protocol.Self(), p.peers, p.clientMsgHandler, p.logger)
 	p.trees[metadata.Id] = tree
+	if p.treeConstructedHandler != nil {
+		go p.treeConstructedHandler(tree.metadata)
+	}
 	timestamp := make([]byte, 8)
 	binary.LittleEndian.PutUint64(timestamp, uint64(time.Now().Unix()))
 	return p.Broadcast(tree.metadata.Id, "init", timestamp)
@@ -98,6 +105,9 @@ func (p *plumtree) DestroyTree(metadata TreeMetadata) error {
 	}
 	p.lock.Lock()
 	delete(p.trees, metadata.Id)
+	if p.treeDestroyedHandler != nil {
+		go p.treeDestroyedHandler(metadata)
+	}
 	p.deletedTrees[metadata.Id] = timestamp
 	p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
 	p.lock.Unlock()
@@ -127,6 +137,26 @@ func (p *plumtree) Broadcast(treeId string, msgType string, msg []byte) error {
 			Round:    0,
 		}
 		return tree.Broadcast(payload)
+	}
+}
+
+func (p *plumtree) GetParent(treeId string) (*hyparview.Peer, error) {
+	p.logger.Println("Get parent")
+	if tree, ok := p.trees[treeId]; !ok {
+		return nil, fmt.Errorf("no tree with id=%s found", treeId)
+	} else {
+		return tree.parent, nil
+	}
+}
+
+func (p *plumtree) GetChildren(treeId string) ([]hyparview.Peer, error) {
+	p.logger.Println("Get children")
+	if tree, ok := p.trees[treeId]; !ok {
+		return nil, fmt.Errorf("no tree with id=%s found", treeId)
+	} else {
+		return slices.DeleteFunc(tree.eagerPushPeers, func(peer hyparview.Peer) bool {
+			return peer.Node.ID == tree.parent.Node.ID
+		}), nil
 	}
 }
 
@@ -161,6 +191,9 @@ func (p *plumtree) msgSubscribe() transport.Subscription {
 					delete(p.deletedTrees, gossipMsg.Metadata.Id)
 					tree := NewTree(p.config, gossipMsg.Metadata, p.protocol.Self(), p.peers, p.clientMsgHandler, p.logger)
 					p.trees[tree.metadata.Id] = tree
+					if p.treeConstructedHandler != nil {
+						go p.treeConstructedHandler(tree.metadata)
+					}
 					tree.onGossip(gossipMsg, received.Sender)
 				}
 			} else {
@@ -168,6 +201,9 @@ func (p *plumtree) msgSubscribe() transport.Subscription {
 					p.logger.Println("received destroy gossip msg", gossipMsg)
 					p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
 					delete(p.trees, gossipMsg.Metadata.Id)
+					if p.treeDestroyedHandler != nil {
+						p.treeDestroyedHandler(tree.metadata)
+					}
 					deleteTimestamp := binary.LittleEndian.Uint64(gossipMsg.Msg)
 					p.deletedTrees[gossipMsg.Metadata.Id] = deleteTimestamp
 					p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)

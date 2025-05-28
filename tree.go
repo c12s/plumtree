@@ -151,6 +151,7 @@ func (t *Tree) onGossip(msg PlumtreeGossipMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(t.receivedMsgs, func(received PlumtreeGossipMessage) bool {
 		return bytes.Equal(msg.MsgId, received.MsgId)
 	}) {
+		t.parent = &sender
 		proceed := t.clientMsgHandler(msg.Metadata, msg.Msg)
 		if !proceed {
 			t.logger.Println("Quit broadcast signal from client during gossip")
