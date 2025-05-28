@@ -17,6 +17,7 @@ const (
 
 type PlumtreeGossipMessage struct {
 	Metadata TreeMetadata
+	MsgType  string
 	Msg      []byte
 	MsgId    []byte
 	Round    int

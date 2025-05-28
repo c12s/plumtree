@@ -1,6 +1,7 @@
 package plumtree
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/c12s/hyparview/hyparview"
 	"github.com/c12s/hyparview/transport"
@@ -18,6 +20,7 @@ type plumtree struct {
 	protocol         MembershipProtocol
 	peers            []hyparview.Peer
 	trees            map[string]*Tree
+	deletedTrees     map[string]uint64
 	msgCh            chan ReceivedPlumtreeMessage
 	msgSubscription  transport.Subscription
 	clientMsgHandler func(tree TreeMetadata, msg []byte) bool
@@ -34,6 +37,7 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 		protocol:         protocol,
 		peers:            protocol.GetPeers(config.Fanout),
 		trees:            make(map[string]*Tree),
+		deletedTrees:     make(map[string]uint64),
 		msgCh:            make(chan ReceivedPlumtreeMessage),
 		clientMsgHandler: clientMsgHandler,
 		lock:             new(sync.Mutex),
@@ -74,10 +78,33 @@ func NewPlumtree(config Config, protocol MembershipProtocol, clientMsgHandler fu
 func (p *plumtree) ConstructTree(metadata TreeMetadata) error {
 	tree := NewTree(p.config, metadata, p.protocol.Self(), p.peers, p.clientMsgHandler, p.logger)
 	p.trees[metadata.Id] = tree
-	return p.Broadcast(tree.metadata.Id, []byte("init"))
+	timestamp := make([]byte, 8)
+	binary.LittleEndian.PutUint64(timestamp, uint64(time.Now().Unix()))
+	return p.Broadcast(tree.metadata.Id, "init", timestamp)
 }
 
-func (p *plumtree) Broadcast(treeId string, msg []byte) error {
+func (p *plumtree) DestroyTree(metadata TreeMetadata) error {
+	if _, ok := p.trees[metadata.Id]; !ok {
+		return fmt.Errorf("no tree with id=%s found", metadata.Id)
+	}
+	p.logger.Println("sending destroy gossip msg", metadata)
+	p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
+	timestamp := uint64(time.Now().Unix())
+	timestampBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(timestampBytes, timestamp)
+	err := p.Broadcast(metadata.Id, "destroy", timestampBytes)
+	if err != nil {
+		p.logger.Println("error while broadcasting destroy msg", err)
+	}
+	p.lock.Lock()
+	delete(p.trees, metadata.Id)
+	p.deletedTrees[metadata.Id] = timestamp
+	p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
+	p.lock.Unlock()
+	return nil
+}
+
+func (p *plumtree) Broadcast(treeId string, msgType string, msg []byte) error {
 	p.logger.Println("Broadcasting message")
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -94,6 +121,7 @@ func (p *plumtree) Broadcast(treeId string, msg []byte) error {
 		msgId := hashFn.Sum(nil)
 		payload := PlumtreeGossipMessage{
 			Metadata: tree.metadata,
+			MsgType:  msgType,
 			MsgId:    msgId,
 			Msg:      msg,
 			Round:    0,
@@ -123,11 +151,33 @@ func (p *plumtree) msgSubscribe() transport.Subscription {
 			}
 			if tree, ok := p.trees[gossipMsg.Metadata.Id]; !ok {
 				p.logger.Printf("tree with id=%s not found\n", gossipMsg.Metadata.Id)
-				tree := NewTree(p.config, gossipMsg.Metadata, p.protocol.Self(), p.peers, p.clientMsgHandler, p.logger)
-				p.trees[tree.metadata.Id] = tree
-				tree.onGossip(gossipMsg, received.Sender)
+				deletedTimestamp, wasDeleted := p.deletedTrees[gossipMsg.Metadata.Id]
+				reinit := false
+				if wasDeleted && gossipMsg.MsgType == "init" {
+					initTimestamp := binary.LittleEndian.Uint64(gossipMsg.Msg)
+					reinit = initTimestamp > deletedTimestamp
+				}
+				if !wasDeleted || reinit {
+					delete(p.deletedTrees, gossipMsg.Metadata.Id)
+					tree := NewTree(p.config, gossipMsg.Metadata, p.protocol.Self(), p.peers, p.clientMsgHandler, p.logger)
+					p.trees[tree.metadata.Id] = tree
+					tree.onGossip(gossipMsg, received.Sender)
+				}
 			} else {
-				tree.onGossip(gossipMsg, received.Sender)
+				if string(gossipMsg.MsgType) == "destroy" {
+					p.logger.Println("received destroy gossip msg", gossipMsg)
+					p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
+					delete(p.trees, gossipMsg.Metadata.Id)
+					deleteTimestamp := binary.LittleEndian.Uint64(gossipMsg.Msg)
+					p.deletedTrees[gossipMsg.Metadata.Id] = deleteTimestamp
+					p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
+					err = tree.Broadcast(gossipMsg)
+					if err != nil {
+						p.logger.Println("error broadcasting destroy msg", gossipMsg)
+					}
+				} else {
+					tree.onGossip(gossipMsg, received.Sender)
+				}
 			}
 		} else if PlumtreeMessageType(int8(msgType)) == PRUNE_MSG_TYPE {
 			pruneMsg := PlumtreePruneMessage{}

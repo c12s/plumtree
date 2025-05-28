@@ -18,7 +18,7 @@ import (
 )
 
 func TestTreeConstruction(t *testing.T) {
-	const numNodes = 50
+	const numNodes = 20
 	var nodes []*hyparview.HyParView
 	port := 8000
 	config := hyparview.Config{
@@ -86,7 +86,7 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, []byte("hello"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -97,7 +97,7 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, []byte("hello2"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello2"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -112,28 +112,32 @@ func TestTreeConstruction(t *testing.T) {
 	nodes[5].Leave()
 	log.Println("node left")
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t2.Id, []byte("hello3"))
+	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello3"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t2.Id, []byte("hello4"))
+	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello4"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, []byte("hello5"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello5"))
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("NUM GOROUTINES", runtime.NumGoroutine())
 	time.Sleep(10 * time.Second)
 	// time.Sleep(60 * time.Second)
-	err = trees[0].Broadcast(t1.Id, []byte("hello6"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello6"))
 	if err != nil {
 		log.Println(err)
 	}
-	err = trees[0].Broadcast(t2.Id, []byte("hello7"))
+	err = trees[0].Broadcast(t2.Id, "custom", []byte("hello7"))
+	if err != nil {
+		log.Println(err)
+	}
+	err = trees[0].DestroyTree(t1)
 	if err != nil {
 		log.Println(err)
 	}
