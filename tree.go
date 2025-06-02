@@ -16,6 +16,10 @@ type TreeMetadata struct {
 	Score float64
 }
 
+func (m TreeMetadata) HasHigherScore(tree TreeMetadata) bool {
+	return m.Score > tree.Score || m.Id > tree.Id
+}
+
 type Tree struct {
 	config           Config
 	metadata         TreeMetadata
@@ -23,16 +27,16 @@ type Tree struct {
 	parent           *hyparview.Peer
 	eagerPushPeers   []hyparview.Peer
 	lazyPushPeers    []hyparview.Peer
-	clientMsgHandler func(tree TreeMetadata, msg []byte) bool
+	clientMsgHandler func(tree TreeMetadata, msgType string, msg []byte, s data.Node) bool
 	receivedMsgs     []PlumtreeGossipMessage
 	missingMsgs      map[string][]hyparview.Peer
-	lazyQueue        map[string][]PlumtreeGossipMessage
+	lazyQueue        map[int64][]PlumtreeGossipMessage
 	timers           map[string][]chan struct{}
 	logger           *log.Logger
 	lock             *sync.Mutex
 }
 
-func NewTree(config Config, metadata TreeMetadata, self data.Node, peers []hyparview.Peer, clientMsgHandler func(tree TreeMetadata, msg []byte) bool, logger *log.Logger) *Tree {
+func NewTree(config Config, metadata TreeMetadata, self data.Node, peers []hyparview.Peer, clientMsgHandler func(tree TreeMetadata, msgType string, msg []byte, s data.Node) bool, logger *log.Logger) *Tree {
 	t := &Tree{
 		config:           config,
 		metadata:         metadata,
@@ -43,7 +47,7 @@ func NewTree(config Config, metadata TreeMetadata, self data.Node, peers []hypar
 		clientMsgHandler: clientMsgHandler,
 		receivedMsgs:     make([]PlumtreeGossipMessage, 0),
 		missingMsgs:      make(map[string][]hyparview.Peer),
-		lazyQueue:        map[string][]PlumtreeGossipMessage{},
+		lazyQueue:        map[int64][]PlumtreeGossipMessage{},
 		timers:           make(map[string][]chan struct{}),
 		logger:           logger,
 		lock:             new(sync.Mutex),
@@ -54,7 +58,7 @@ func NewTree(config Config, metadata TreeMetadata, self data.Node, peers []hypar
 
 func (t *Tree) Broadcast(msg PlumtreeGossipMessage) error {
 	t.logger.Println("Broadcasting message")
-	proceed := t.clientMsgHandler(t.metadata, msg.Msg)
+	proceed := t.clientMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.self)
 	if !proceed {
 		t.logger.Println("Quit broadcast signal from client")
 		return nil
@@ -68,6 +72,25 @@ func (t *Tree) Broadcast(msg PlumtreeGossipMessage) error {
 	t.lazyPush(msg, t.self)
 	t.receivedMsgs = append(t.receivedMsgs, msg)
 	t.logger.Println("Message broadcasted successfully")
+	return nil
+}
+
+func (t *Tree) Send(msg PlumtreeGossipMessage, receiver *hyparview.Peer) error {
+	t.logger.Println("Sending message to one peer")
+	msgBytes, err := msg.Serialize()
+	if err != nil {
+		t.logger.Println("Error serializing payload:", err)
+		return err
+	}
+	err = receiver.Conn.Send(data.Message{
+		Type:    data.CUSTOM,
+		Payload: msgBytes,
+	})
+	if err != nil {
+		t.logger.Println("Error sending message:", err)
+		return err
+	}
+	t.logger.Println("Message sent successfully")
 	return nil
 }
 
@@ -151,12 +174,24 @@ func (t *Tree) onGossip(msg PlumtreeGossipMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(t.receivedMsgs, func(received PlumtreeGossipMessage) bool {
 		return bytes.Equal(msg.MsgId, received.MsgId)
 	}) {
-		t.parent = &sender
-		proceed := t.clientMsgHandler(msg.Metadata, msg.Msg)
+		t.logger.Println("message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
+		t.logger.Println("eager push peers", t.eagerPushPeers, "lazy push peers", t.lazyPushPeers)
+		if !slices.ContainsFunc(t.eagerPushPeers, func(peer hyparview.Peer) bool {
+			return peer.Node.ID == sender.Node.ID
+		}) {
+			t.eagerPushPeers = append(t.eagerPushPeers, sender)
+		}
+		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(peer hyparview.Peer) bool {
+			return peer.Node.ID == sender.Node.ID
+		})
+		t.logger.Println("eager push peers", t.eagerPushPeers, "lazy push peers", t.lazyPushPeers)
+		proceed := t.clientMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
 		if !proceed {
 			t.logger.Println("Quit broadcast signal from client during gossip")
 			return
 		}
+		// todo!!!!
+		t.parent = &sender
 		t.receivedMsgs = append(t.receivedMsgs, msg)
 		if timers, ok := t.timers[string(msg.MsgId)]; ok {
 			for _, timer := range timers {
@@ -175,17 +210,6 @@ func (t *Tree) onGossip(msg PlumtreeGossipMessage, sender hyparview.Peer) {
 		}
 		t.eagerPush(payloadSerialized, sender.Node)
 		t.lazyPush(msg, sender.Node)
-		t.logger.Println("message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
-		t.logger.Println("eager push peers", t.eagerPushPeers, "lazy push peers", t.lazyPushPeers)
-		if !slices.ContainsFunc(t.eagerPushPeers, func(peer hyparview.Peer) bool {
-			return peer.Node.ID == sender.Node.ID
-		}) {
-			t.eagerPushPeers = append(t.eagerPushPeers, sender)
-		}
-		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(peer hyparview.Peer) bool {
-			return peer.Node.ID == sender.Node.ID
-		})
-		t.logger.Println("eager push peers", t.eagerPushPeers, "lazy push peers", t.lazyPushPeers)
 	} else {
 		t.logger.Printf("Removing peer %s from eager push peers due to duplicate message\n", sender.Node.ID)
 		t.logger.Println("eager push peers", t.eagerPushPeers, "lazy push peers", t.lazyPushPeers)
@@ -239,7 +263,7 @@ func (t *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		}
 		t.missingMsgs[string(msgId)] = append(t.missingMsgs[string(msgId)], sender)
 		if _, ok := t.timers[string(msgId)]; !ok {
-			t.setTimer(msgId, t.config.MissingMsgTimeout, t.config.SecondaryMissingMsgTimeout)
+			t.setTimer(msgId, t.config.MissingMsgTimeout, t.config.MissingMsgTimeout/2)
 		}
 	}
 }

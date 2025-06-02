@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 
@@ -35,9 +36,9 @@ func TestTreeConstruction(t *testing.T) {
 
 	for i := 0; i < numNodes; i++ {
 		port = port + 1
-		config.ContactNodeID = "node1"
+		config.ContactNodeID = 1
 		config.ContactNodeAddress = fmt.Sprintf("127.0.0.1:%d", 8001)
-		config.NodeID = fmt.Sprintf("node%d", i+1)
+		config.NodeID = int64(i + 1)
 		config.ListenAddress = fmt.Sprintf("127.0.0.1:%d", port)
 		self := data.Node{
 			ID:            config.NodeID,
@@ -46,7 +47,7 @@ func TestTreeConstruction(t *testing.T) {
 		connManager := transport.NewConnManager(transport.NewTCPConn, transport.AcceptTcpConnsFn(self.ListenAddress))
 		logger := log.New(&lumberjack.Logger{
 			Filename: fmt.Sprintf("log/%s.log", config.NodeID),
-		}, config.NodeID, log.LstdFlags|log.Lshortfile)
+		}, strconv.Itoa(int(config.NodeID)), log.LstdFlags|log.Lshortfile)
 		node, err := hyparview.NewHyParView(config.HyParViewConfig, self, connManager, logger)
 		if err != nil {
 			log.Println(err)
@@ -63,21 +64,26 @@ func TestTreeConstruction(t *testing.T) {
 	// time.Sleep(10 * time.Second)
 
 	plumtreeConfig := Config{
-		Fanout:                     500,
-		AnnounceInterval:           5,
-		MissingMsgTimeout:          3,
-		SecondaryMissingMsgTimeout: 1,
+		Fanout:            500,
+		AnnounceInterval:  5,
+		MissingMsgTimeout: 3,
+		// SecondaryMissingMsgTimeout: 1,
 	}
-	trees := []*plumtree{}
+	trees := []*Plumtree{}
 	for _, node := range nodes {
 		logger := log.New(&lumberjack.Logger{
 			Filename: fmt.Sprintf("log/tree_%s.log", node.Self().ID),
-		}, node.Self().ID, log.LstdFlags|log.Lshortfile)
-		tree := NewPlumtree(plumtreeConfig, node, func(m TreeMetadata, b []byte) bool {
+		}, strconv.Itoa(int(node.Self().ID)), log.LstdFlags|log.Lshortfile)
+		tree := NewPlumtree(plumtreeConfig, node, logger)
+		tree.OnMessage(func(m TreeMetadata, t string, b []byte, s data.Node) bool {
 			log.Println(m)
+			log.Println(s)
+			log.Println(t)
 			log.Println(string(b))
 			return true
-		}, logger, func(tree TreeMetadata) { logger.Println("tree constructed", tree.Id) }, func(tree TreeMetadata) { logger.Println("tree destroyed", tree.Id) })
+		})
+		tree.OnTreeConstructed(func(tree TreeMetadata) { logger.Println("tree constructed", tree.Id) })
+		tree.OnTreeDestroyed(func(tree TreeMetadata) { logger.Println("tree destroyed", tree.Id) })
 		trees = append(trees, tree)
 	}
 	t1 := TreeMetadata{Id: "t1", Score: 123}
@@ -164,7 +170,7 @@ func TestTreeConstruction(t *testing.T) {
 	drawTrees(trees, "after")
 }
 
-func drawTrees(trees []*plumtree, suffix string) {
+func drawTrees(trees []*Plumtree, suffix string) {
 	graphs := make(map[string]graph.Graph[string, string])
 	for _, tree := range trees {
 		for _, t := range tree.trees {
@@ -182,7 +188,7 @@ func drawTrees(trees []*plumtree, suffix string) {
 			if g == nil {
 				continue
 			}
-			g.AddVertex(tree.protocol.Self().ID)
+			g.AddVertex(strconv.Itoa(int(tree.protocol.Self().ID)))
 		}
 	}
 	for _, tree := range trees {
@@ -192,7 +198,7 @@ func drawTrees(trees []*plumtree, suffix string) {
 				continue
 			}
 			for _, peer := range t.eagerPushPeers {
-				g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+				g.AddEdge(strconv.Itoa(int(tree.protocol.Self().ID)), strconv.Itoa(int(peer.Node.ID)))
 			}
 		}
 	}
