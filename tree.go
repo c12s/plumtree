@@ -9,6 +9,7 @@ import (
 
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
+	"github.com/c12s/hyparview/transport"
 )
 
 type TreeMetadata struct {
@@ -75,14 +76,14 @@ func (t *Tree) Broadcast(msg PlumtreeGossipMessage) error {
 	return nil
 }
 
-func (t *Tree) Send(msg PlumtreeGossipMessage, receiver *hyparview.Peer) error {
+func (t *Tree) Send(msg PlumtreeGossipMessage, receiver transport.Conn) error {
 	t.logger.Println("Sending message to one peer")
 	msgBytes, err := msg.Serialize()
 	if err != nil {
 		t.logger.Println("Error serializing payload:", err)
 		return err
 	}
-	err = receiver.Conn.Send(data.Message{
+	err = receiver.Send(data.Message{
 		Type:    data.CUSTOM,
 		Payload: msgBytes,
 	})
@@ -97,6 +98,7 @@ func (t *Tree) Send(msg PlumtreeGossipMessage, receiver *hyparview.Peer) error {
 func (t *Tree) eagerPush(payload []byte, sender data.Node) {
 	t.logger.Println("Eager push - sending")
 	for _, peer := range t.eagerPushPeers {
+		t.logger.Println("peer", peer)
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
 			continue
 		}
