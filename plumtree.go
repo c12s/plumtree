@@ -54,45 +54,12 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 		IHAVE_MSG_TYPE:  p.onIHave,
 		GRAFT_MSG_TYPE:  p.onGraft,
 	}
-	p.msgSubscription = p.msgSubscribe()
+	p.msgSubscription = p.processMsgs()
 	p.protocol.OnPeerUp(p.onPeerUp)
 	p.protocol.OnPeerDown(p.onPeerDown)
-	p.protocol.AddCustomMsgHandler(func(msg []byte, sender transport.Conn) error {
-		p.lock.Lock()
-		p.logger.Println("Custom message handler invoked")
-		p.logger.Println("peers", p.peers)
-		p.logger.Println("sender", sender)
-		index := slices.IndexFunc(p.peers, func(peer hyparview.Peer) bool {
-			return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
-		})
-		if index < 0 {
-			p.lock.Unlock()
-			return errors.New("could not find peer in eager or lazy push peers")
-		}
-		peer := p.peers[index]
-		p.lock.Unlock()
-		p.logger.Printf("%s received from %s\n", p.protocol.Self().ID, peer.Node.ID)
-		p.msgCh <- ReceivedPlumtreeMessage{MsgBytes: msg, Sender: peer}
-		return nil
-	})
+	p.protocol.AddCustomMsgHandler(p.handleMsg)
 	p.logger.Println("Plumtree initialized", "peers", p.peers)
 	return p
-}
-
-func (p *Plumtree) OnGossip(handler func(m TreeMetadata, t string, b []byte, s data.Node) bool) {
-	p.gossipMsgHandler = handler
-}
-
-func (p *Plumtree) OnDirect(handler func(m TreeMetadata, t string, b []byte, s data.Node)) {
-	p.directMsgHandler = handler
-}
-
-func (p *Plumtree) OnTreeConstructed(handler func(tree TreeMetadata)) {
-	p.treeConstructedHandler = handler
-}
-
-func (p *Plumtree) OnTreeDestroyed(handler func(tree TreeMetadata)) {
-	p.treeDestroyedHandler = handler
 }
 
 func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
@@ -112,21 +79,17 @@ func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
 	p.logger.Println("sending destroy gossip msg", metadata)
 	p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
 	timestamp := uint64(time.Now().Unix())
-	// p.lock.Lock()
 	delete(p.trees, metadata.Id)
 	if p.treeDestroyedHandler != nil {
 		go p.treeDestroyedHandler(metadata)
 	}
 	p.deletedTrees[metadata.Id] = timestamp
 	p.logger.Println("trees", p.trees, "deleted trees", p.deletedTrees)
-	// p.lock.Unlock()
 	return nil
 }
 
-func (p *Plumtree) Broadcast(treeId string, msgType string, msg []byte) error {
-	p.logger.Println("Broadcasting message")
-	// p.lock.Lock()
-	// defer p.lock.Unlock()
+func (p *Plumtree) Gossip(treeId string, msgType string, msg []byte) error {
+	p.logger.Println("Gossiping message")
 	if tree, ok := p.trees[treeId]; !ok {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
@@ -148,14 +111,12 @@ func (p *Plumtree) Broadcast(treeId string, msgType string, msg []byte) error {
 			Msg:      msg,
 			Round:    0,
 		}
-		return tree.Broadcast(payload)
+		return tree.Gossip(payload)
 	}
 }
 
-func (p *Plumtree) Send(treeId string, msgType string, msg []byte, receiver transport.Conn) error {
+func (p *Plumtree) sendDirectMsg(treeId string, msgType string, msg []byte, receiver transport.Conn) error {
 	p.logger.Println("Sending message")
-	// p.lock.Lock()
-	// defer p.lock.Unlock()
 	if tree, ok := p.trees[treeId]; !ok {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
@@ -174,7 +135,7 @@ func (p *Plumtree) Send(treeId string, msgType string, msg []byte, receiver tran
 			Msg:      msg,
 			Round:    0,
 		}
-		return tree.Send(payload, receiver)
+		return tree.SendDirectMsg(payload, receiver)
 	}
 }
 
@@ -183,7 +144,7 @@ func (p *Plumtree) SendToParent(treeId string, msgType string, msg []byte) error
 	if tree, ok := p.trees[treeId]; !ok {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
-		err := p.Send(treeId, msgType, msg, tree.parent.Conn)
+		err := p.sendDirectMsg(treeId, msgType, msg, tree.parent.Conn)
 		if err != nil {
 			return fmt.Errorf("error sending %s: %v", msgType, err)
 		}
@@ -198,7 +159,7 @@ func (p *Plumtree) HasParent(treeId string) bool {
 }
 
 func (p *Plumtree) GetPeersNum() int {
-	p.logger.Println("Get peers")
+	p.logger.Println("Get peers num")
 	p.logger.Println(p.peers)
 	return len(p.peers)
 }
@@ -226,7 +187,42 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 	}
 }
 
-func (p *Plumtree) msgSubscribe() transport.Subscription {
+func (p *Plumtree) OnGossip(handler func(m TreeMetadata, t string, b []byte, s data.Node) bool) {
+	p.gossipMsgHandler = handler
+}
+
+func (p *Plumtree) OnDirect(handler func(m TreeMetadata, t string, b []byte, s data.Node)) {
+	p.directMsgHandler = handler
+}
+
+func (p *Plumtree) OnTreeConstructed(handler func(tree TreeMetadata)) {
+	p.treeConstructedHandler = handler
+}
+
+func (p *Plumtree) OnTreeDestroyed(handler func(tree TreeMetadata)) {
+	p.treeDestroyedHandler = handler
+}
+
+func (p *Plumtree) handleMsg(msg []byte, sender transport.Conn) error {
+	p.lock.Lock()
+	p.logger.Println("Custom message handler invoked")
+	p.logger.Println("peers", p.peers)
+	p.logger.Println("sender", sender)
+	index := slices.IndexFunc(p.peers, func(peer hyparview.Peer) bool {
+		return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
+	})
+	if index < 0 {
+		p.lock.Unlock()
+		return errors.New("could not find peer in eager or lazy push peers")
+	}
+	peer := p.peers[index]
+	p.lock.Unlock()
+	p.logger.Printf("%s received from %s\n", p.protocol.Self().ID, peer.Node.ID)
+	p.msgCh <- ReceivedPlumtreeMessage{MsgBytes: msg, Sender: peer}
+	return nil
+}
+
+func (p *Plumtree) processMsgs() transport.Subscription {
 	p.logger.Println("Message subscription started")
 	return transport.Subscribe(p.msgCh, func(received ReceivedPlumtreeMessage) {
 		p.logger.Println("Received message in subscription handler", received.MsgBytes)

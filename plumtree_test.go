@@ -23,7 +23,7 @@ func TestTreeConstruction(t *testing.T) {
 	port := 8000
 	config := hyparview.Config{
 		HyParViewConfig: hyparview.HyParViewConfig{
-			Fanout:          4,
+			Fanout:          6,
 			PassiveViewSize: 5,
 			ARWL:            4,
 			PRWL:            2,
@@ -63,7 +63,7 @@ func TestTreeConstruction(t *testing.T) {
 	// time.Sleep(10 * time.Second)
 
 	plumtreeConfig := Config{
-		Fanout:            500,
+		Fanout:            50,
 		AnnounceInterval:  5,
 		MissingMsgTimeout: 3,
 		// SecondaryMissingMsgTimeout: 1,
@@ -91,7 +91,7 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello"))
+	err = trees[0].Gossip(t1.Id, "custom", []byte("hello"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -102,7 +102,7 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello2"))
+	err = trees[0].Gossip(t1.Id, "custom", []byte("hello2"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -117,37 +117,32 @@ func TestTreeConstruction(t *testing.T) {
 	nodes[5].Leave()
 	log.Println("node left")
 	time.Sleep(2 * time.Second)
-	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello3"))
+	err = trees[2].Gossip(t2.Id, "custom", []byte("hello3"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello4"))
+	err = trees[2].Gossip(t2.Id, "custom", []byte("hello4"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello5"))
+	err = trees[0].Gossip(t1.Id, "custom", []byte("hello5"))
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("NUM GOROUTINES", runtime.NumGoroutine())
 	time.Sleep(10 * time.Second)
 	// time.Sleep(60 * time.Second)
-	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello6"))
+	err = trees[0].Gossip(t1.Id, "custom", []byte("hello6"))
 	if err != nil {
 		log.Println(err)
 	}
-	err = trees[2].Broadcast(t2.Id, "custom", []byte("hello7"))
+	err = trees[2].Gossip(t2.Id, "custom", []byte("hello7"))
 	if err != nil {
 		log.Println(err)
 	}
-	// err = trees[0].DestroyTree(t1)
-	// if err != nil {
-	// 	log.Println(err)
-	// }
 	time.Sleep(10 * time.Second)
-	// time.Sleep(60 * time.Second)
 
 	for _, tree := range trees {
 		log.Println("********************")
