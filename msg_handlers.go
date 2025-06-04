@@ -38,7 +38,7 @@ func (p *Plumtree) onDirect(msgBytes []byte, sender hyparview.Peer) {
 	if tree, ok := p.trees[directMsg.Metadata.Id]; !ok {
 		p.logger.Printf("tree with id=%s not found\n", directMsg.Metadata.Id)
 	} else {
-		tree.onGossip(directMsg, sender)
+		tree.onDirect(directMsg, sender)
 	}
 }
 

@@ -155,6 +155,7 @@ func (p *Plumtree) SendToParent(treeId string, msgType string, msg []byte) error
 func (p *Plumtree) HasParent(treeId string) bool {
 	p.logger.Println("Get parent", p.peers)
 	tree, ok := p.trees[treeId]
+	p.logger.Println(tree.parent)
 	return ok && tree.parent != nil
 }
 
