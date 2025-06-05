@@ -62,6 +62,18 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 	return p
 }
 
+func (p *Plumtree) Join(id, address string) error {
+	return p.protocol.Join(id, address)
+}
+
+func (p *Plumtree) Leave() {
+	p.protocol.Leave()
+}
+
+func (p *Plumtree) ListenAddress() string {
+	return p.protocol.Self().ListenAddress
+}
+
 func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 	tree := NewTree(p.config, metadata, p.protocol.Self(), slices.Clone(p.peers), p.gossipMsgHandler, p.directMsgHandler, p.logger)
 	p.logger.Println("tree created", metadata.Id)

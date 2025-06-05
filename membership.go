@@ -7,6 +7,8 @@ import (
 )
 
 type MembershipProtocol interface {
+	Join(id, address string) error
+	Leave()
 	Self() data.Node
 	GetPeers(fanout int) []hyparview.Peer
 	OnPeerUp(handler func(peer hyparview.Peer))
