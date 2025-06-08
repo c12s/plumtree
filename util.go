@@ -1,8 +1,11 @@
 package plumtree
 
 import (
+	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"slices"
+	"time"
 
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
@@ -33,4 +36,16 @@ func send(payload any, msgType MessageType, to transport.Conn) error {
 		return fmt.Errorf("error sending %v message: %v", msgType, err)
 	}
 	return nil
+}
+
+func makeMsgID(nodeID string, msg []byte) ([]byte, error) {
+	hashFn := fnv.New64()
+	ts := time.Now().Unix()
+	tsBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(tsBytes, uint64(ts))
+	_, err := hashFn.Write(append(append(msg, []byte(nodeID)...), tsBytes...))
+	if err != nil {
+		return nil, err
+	}
+	return hashFn.Sum(nil), nil
 }
