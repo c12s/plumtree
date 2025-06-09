@@ -29,7 +29,7 @@ func TestTreeConstruction(t *testing.T) {
 		Kp:              3,
 	}
 	plumtreeConfig := Config{
-		Fanout:            50,
+		Fanout:            3,
 		AnnounceInterval:  3,
 		MissingMsgTimeout: 3,
 	}

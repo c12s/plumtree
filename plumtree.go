@@ -209,6 +209,7 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 		if tree.parent != nil {
 			length--
 		}
+		// todo: lock of unlocked mutex ???????????
 		result := make([]data.Node, length)
 		j := 0
 		for _, c := range children {
