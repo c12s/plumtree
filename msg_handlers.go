@@ -23,7 +23,9 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "tree created", tree.metadata.Id)
 		p.trees[tree.metadata.Id] = tree
 		if p.treeConstructedHandler != nil {
-			go p.treeConstructedHandler(tree.metadata)
+			p.lock.Unlock()
+			p.treeConstructedHandler(tree.metadata)
+			p.lock.Lock()
 		}
 	}
 	tree.onGossip(gossipMsg, sender)

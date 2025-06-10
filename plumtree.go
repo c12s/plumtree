@@ -72,11 +72,13 @@ func (p *Plumtree) Join(id, address string) error {
 
 // unlocked
 func (p *Plumtree) Leave() {
-	p.msgSubscription.Unsubscribe()
+	// p.msgSubscription.Unsubscribe()
+	p.shared.logger.Println("pt leave")
 	p.protocol.Leave()
-	for _, t := range p.trees {
-		t.stopCh <- struct{}{}
-	}
+	p.shared.logger.Println("pt left")
+	// for _, t := range p.trees {
+	// 	t.stopCh <- struct{}{}
+	// }
 }
 
 // unlocked
@@ -92,7 +94,9 @@ func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 	p.shared.logger.Println(p.shared.self.ID, "-", "tree created", metadata.Id)
 	p.trees[metadata.Id] = tree
 	if p.treeConstructedHandler != nil {
-		go p.treeConstructedHandler(tree.metadata)
+		p.lock.Unlock()
+		p.treeConstructedHandler(tree.metadata)
+		p.lock.Lock()
 	}
 	return nil
 }
@@ -108,7 +112,9 @@ func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
 	p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
 	delete(p.trees, metadata.Id)
 	if p.treeDestroyedHandler != nil {
-		go p.treeDestroyedHandler(metadata)
+		p.lock.Unlock()
+		p.treeDestroyedHandler(metadata)
+		p.lock.Lock()
 	}
 	p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
 	return nil
@@ -208,6 +214,9 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 		length := len(children)
 		if tree.parent != nil {
 			length--
+		}
+		if length < 0 {
+			length = 0
 		}
 		// todo: lock of unlocked mutex ???????????
 		result := make([]data.Node, length)
