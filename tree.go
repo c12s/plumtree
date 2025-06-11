@@ -12,7 +12,7 @@ import (
 
 type TreeMetadata struct {
 	Id    string
-	Score float64
+	Score string
 }
 
 func (m TreeMetadata) HasHigherScore(tree TreeMetadata) bool {
@@ -56,6 +56,7 @@ func (t *Tree) Gossip(msg PlumtreeCustomMessage) error {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Gossiping message")
 	t.lock.Unlock()
 	proceed := t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self)
+	t.shared.logger.Println("try lock")
 	t.lock.Lock()
 	if !proceed {
 		t.shared.logger.Println(t.shared.self.ID, "-", "Quit broadcast signal from client")
@@ -115,6 +116,7 @@ func (t *Tree) sendAnnouncements() {
 	for {
 		select {
 		case <-ticker.C:
+			t.shared.logger.Println("try lock")
 			t.lock.Lock()
 			t.shared.logger.Println(t.shared.self.ID, "-", "Sending announcements")
 			for nodeId, messages := range t.lazyQueue {

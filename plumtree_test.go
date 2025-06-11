@@ -86,7 +86,7 @@ func TestTreeConstruction(t *testing.T) {
 		}
 	}
 
-	t1 := TreeMetadata{Id: "t1", Score: 123}
+	t1 := TreeMetadata{Id: "t1", Score: "t1"}
 	err := trees[0].ConstructTree(t1)
 	if err != nil {
 		log.Println(err)

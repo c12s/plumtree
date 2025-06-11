@@ -25,6 +25,7 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 		if p.treeConstructedHandler != nil {
 			p.lock.Unlock()
 			p.treeConstructedHandler(tree.metadata)
+			p.shared.logger.Println("try lock")
 			p.lock.Lock()
 		}
 	}
@@ -108,6 +109,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		delete(p.missingMsgs, string(msg.MsgId))
 		p.lock.Unlock()
 		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
+		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		if !proceed {
 			p.shared.logger.Println(p.shared.self.ID, "-", "Quit broadcast signal from client during gossip")
@@ -169,7 +171,7 @@ func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 		return bytes.Equal(received.MsgId, msg.MsgId)
 	})
 	if msgIndex < 0 {
-		p.shared.logger.Panicln("could not find in received msgs a missing msg ID", msg.MsgId, "received", p.receivedMsgs)
+		p.shared.logger.Println("could not find in received msgs a missing msg ID", msg.MsgId, "received", p.receivedMsgs)
 		return
 	}
 	missing := p.receivedMsgs[msgIndex]
@@ -184,22 +186,25 @@ func (p *Tree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
 	go func() {
 		p.shared.logger.Println(p.shared.self.ID, "-", p.shared.self.ID, "-", "started timer for msg", msgId)
 		quitCh := make(chan struct{})
+		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		p.timers[string(msgId)] = append(p.timers[string(msgId)], quitCh)
 		p.lock.Unlock()
 		select {
 		case <-time.NewTicker(time.Duration(waitSec) * time.Second).C:
+			p.shared.logger.Println("try lock")
 			p.lock.Lock()
 			defer p.lock.Unlock()
 			p.timers[string(msgId)] = slices.DeleteFunc(p.timers[string(msgId)], func(ch chan struct{}) bool {
 				return ch == quitCh
 			})
+			if len(p.missingMsgs[string(msgId)]) == 0 {
+				p.shared.logger.Println("no peers to receive missing msg from", msgId)
+				return
+			}
 			p.setTimer(msgId, secondaryWaitSec, secondaryWaitSec)
 			p.shared.logger.Println(p.shared.self.ID, "-", p.shared.self.ID, "-", "timer triggered for msg", msgId)
 			p.shared.logger.Println(p.shared.self.ID, "-", "missing msgs", p.missingMsgs)
-			if len(p.missingMsgs[string(msgId)]) == 0 {
-				return
-			}
 			first := p.missingMsgs[string(msgId)][0]
 			p.shared.logger.Println(p.shared.self.ID, "-", "timer triggered peer selected", first.Node.ID)
 			p.missingMsgs[string(msgId)] = slices.Delete(p.missingMsgs[string(msgId)], 0, 1)

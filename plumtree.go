@@ -88,6 +88,7 @@ func (p *Plumtree) ListenAddress() string {
 
 // locked
 func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	tree := NewTree(p.shared, metadata, slices.Clone(p.peers), p.lock)
@@ -96,6 +97,7 @@ func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 	if p.treeConstructedHandler != nil {
 		p.lock.Unlock()
 		p.treeConstructedHandler(tree.metadata)
+		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 	}
 	return nil
@@ -103,6 +105,7 @@ func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 
 // locked
 func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if _, ok := p.trees[metadata.Id]; !ok {
@@ -114,6 +117,7 @@ func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
 	if p.treeDestroyedHandler != nil {
 		p.lock.Unlock()
 		p.treeDestroyedHandler(metadata)
+		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 	}
 	p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
@@ -122,6 +126,7 @@ func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
 
 // locked
 func (p *Plumtree) Gossip(treeId string, msgType string, msg []byte) error {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Gossiping message")
@@ -146,6 +151,7 @@ func (p *Plumtree) Gossip(treeId string, msgType string, msg []byte) error {
 
 // locked
 func (p *Plumtree) SendToParent(treeId string, msgType string, msg []byte) error {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "send to parent", p.peers)
@@ -185,16 +191,18 @@ func (p *Plumtree) sendDirectMsg(treeId string, msgType string, msg []byte, rece
 
 // locked
 func (p *Plumtree) HasParent(treeId string) bool {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Get parent", p.peers)
 	tree, ok := p.trees[treeId]
-	p.shared.logger.Println(p.shared.self.ID, "-", tree.parent)
+	// p.shared.logger.Println(p.shared.self.ID, "-", tree.parent)
 	return ok && tree.parent != nil
 }
 
 // locked
 func (p *Plumtree) GetPeersNum() int {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Get peers num")
@@ -204,30 +212,21 @@ func (p *Plumtree) GetPeersNum() int {
 
 // locked
 func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Get children", p.peers)
 	if tree, ok := p.trees[treeId]; !ok {
 		return nil, fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
-		children := tree.eagerPushPeers
-		length := len(children)
-		if tree.parent != nil {
-			length--
-		}
-		if length < 0 {
-			length = 0
-		}
-		// todo: lock of unlocked mutex ???????????
-		result := make([]data.Node, length)
-		j := 0
+		children := slices.Clone(tree.eagerPushPeers)
+		result := make([]data.Node, 0)
 		for _, c := range children {
-			if tree.parent != nil && tree.parent.Node.ID == c.Node.ID {
-				continue
-			}
-			result[j] = c.Node
-			j++
+			result = append(result, c.Node)
 		}
+		result = slices.DeleteFunc(result, func(n data.Node) bool {
+			return tree.parent != nil && tree.parent.Node.ID == n.ID
+		})
 		return result, nil
 	}
 }
@@ -254,6 +253,7 @@ func (p *Plumtree) OnTreeDestroyed(handler func(tree TreeMetadata)) {
 
 // locked
 func (p *Plumtree) handleMsg(msg []byte, sender transport.Conn) error {
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Custom message handler invoked")
 	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
@@ -277,6 +277,7 @@ func (p *Plumtree) processMsgs() transport.Subscription {
 	p.shared.logger.Println(p.shared.self.ID, "-", "Message subscription started")
 	return transport.Subscribe(p.msgCh, func(received ReceivedPlumtreeMessage) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Received message in subscription handler", received.MsgBytes)
+		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		defer p.lock.Unlock()
 		msgType := GetMsgType(received.MsgBytes)
@@ -297,6 +298,7 @@ func (p *Plumtree) processMsgs() transport.Subscription {
 // locked
 func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing onPeerUp peer: %v\n", p.shared.self.ID, peer.Node.ID)
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
@@ -315,6 +317,7 @@ func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
 // locked
 func (p *Plumtree) onPeerDown(peer hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing onPeerDown peer: %v\n", p.shared.self.ID, peer.Node.ID)
+	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
