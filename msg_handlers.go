@@ -23,10 +23,10 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "tree created", tree.metadata.Id)
 		p.trees[tree.metadata.Id] = tree
 		if p.treeConstructedHandler != nil {
-			p.lock.Unlock()
-			p.treeConstructedHandler(tree.metadata)
-			p.shared.logger.Println("try lock")
-			p.lock.Lock()
+			// p.lock.Unlock()
+			go p.treeConstructedHandler(tree.metadata)
+			// p.shared.logger.Println("try lock")
+			// p.lock.Lock()
 		}
 	}
 	tree.onGossip(gossipMsg, sender)
@@ -156,7 +156,7 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		}
 		p.missingMsgs[string(msgId)] = append(p.missingMsgs[string(msgId)], sender)
 		if _, ok := p.timers[string(msgId)]; !ok {
-			p.setTimer(msgId, p.shared.config.MissingMsgTimeout, p.shared.config.MissingMsgTimeout/2)
+			p.setTimer(msgId)
 		}
 	}
 }
@@ -182,7 +182,7 @@ func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 }
 
 // locked
-func (p *Tree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
+func (p *Tree) setTimer(msgId []byte) {
 	go func() {
 		p.shared.logger.Println(p.shared.self.ID, "-", p.shared.self.ID, "-", "started timer for msg", msgId)
 		quitCh := make(chan struct{})
@@ -190,8 +190,9 @@ func (p *Tree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
 		p.lock.Lock()
 		p.timers[string(msgId)] = append(p.timers[string(msgId)], quitCh)
 		p.lock.Unlock()
+		p.shared.logger.Println("missing msg timeout", p.shared.config.MissingMsgTimeout)
 		select {
-		case <-time.NewTicker(time.Duration(waitSec) * time.Second).C:
+		case <-time.NewTicker(time.Duration(p.shared.config.MissingMsgTimeout) * time.Second).C:
 			p.shared.logger.Println("try lock")
 			p.lock.Lock()
 			defer p.lock.Unlock()
@@ -202,7 +203,7 @@ func (p *Tree) setTimer(msgId []byte, waitSec, secondaryWaitSec int) {
 				p.shared.logger.Println("no peers to receive missing msg from", msgId)
 				return
 			}
-			p.setTimer(msgId, secondaryWaitSec, secondaryWaitSec)
+			p.setTimer(msgId)
 			p.shared.logger.Println(p.shared.self.ID, "-", p.shared.self.ID, "-", "timer triggered for msg", msgId)
 			p.shared.logger.Println(p.shared.self.ID, "-", "missing msgs", p.missingMsgs)
 			first := p.missingMsgs[string(msgId)][0]

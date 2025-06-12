@@ -91,37 +91,46 @@ func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	tree := NewTree(p.shared, metadata, slices.Clone(p.peers), p.lock)
+	tree, ok := p.trees[metadata.Id]
+	if !ok {
+		tree = NewTree(p.shared, metadata, slices.Clone(p.peers), p.lock)
+	} else {
+		tree.destroyed = false
+	}
+	// tree := NewTree(p.shared, metadata, slices.Clone(p.peers), p.lock)
 	p.shared.logger.Println(p.shared.self.ID, "-", "tree created", metadata.Id)
 	p.trees[metadata.Id] = tree
 	if p.treeConstructedHandler != nil {
-		p.lock.Unlock()
-		p.treeConstructedHandler(tree.metadata)
-		p.shared.logger.Println("try lock")
-		p.lock.Lock()
+		// p.lock.Unlock()
+		go p.treeConstructedHandler(tree.metadata)
+		// p.shared.logger.Println("try lock")
+		// p.lock.Lock()
 	}
 	return nil
 }
 
 // locked
 func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
+	p.shared.logger.Println("destroying tree", metadata)
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	if _, ok := p.trees[metadata.Id]; !ok {
+	if tree, ok := p.trees[metadata.Id]; !ok {
 		return fmt.Errorf("no tree with id=%s found", metadata.Id)
+	} else {
+		// p.shared.logger.Println(p.shared.self.ID, "-", "sending destroy gossip msg", metadata)
+		p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
+		// delete(p.trees, metadata.Id)
+		if p.treeDestroyedHandler != nil && !tree.destroyed {
+			p.lock.Unlock()
+			p.treeDestroyedHandler(metadata)
+			p.shared.logger.Println("try lock")
+			p.lock.Lock()
+		}
+		tree.destroyed = true
+		p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
+		return nil
 	}
-	p.shared.logger.Println(p.shared.self.ID, "-", "sending destroy gossip msg", metadata)
-	p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
-	delete(p.trees, metadata.Id)
-	if p.treeDestroyedHandler != nil {
-		p.lock.Unlock()
-		p.treeDestroyedHandler(metadata)
-		p.shared.logger.Println("try lock")
-		p.lock.Lock()
-	}
-	p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
-	return nil
 }
 
 // locked
