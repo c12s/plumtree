@@ -118,10 +118,8 @@ func (p *Plumtree) DestroyTree(metadata TreeMetadata) error {
 	if tree, ok := p.trees[metadata.Id]; !ok {
 		return fmt.Errorf("no tree with id=%s found", metadata.Id)
 	} else {
-		// p.shared.logger.Println(p.shared.self.ID, "-", "sending destroy gossip msg", metadata)
 		p.shared.logger.Println(p.shared.self.ID, "-", "trees", p.trees)
-		// delete(p.trees, metadata.Id)
-		if p.treeDestroyedHandler != nil && !tree.destroyed {
+		if p.treeDestroyedHandler != nil {
 			p.lock.Unlock()
 			p.treeDestroyedHandler(metadata)
 			p.shared.logger.Println("try lock")
@@ -139,7 +137,7 @@ func (p *Plumtree) Gossip(treeId string, msgType string, msg []byte) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Gossiping message")
-	if tree, ok := p.trees[treeId]; !ok {
+	if tree, ok := p.trees[treeId]; !ok || tree.destroyed {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
 		msgId, err := makeMsgID(p.shared.self.ID, msg)
@@ -164,7 +162,7 @@ func (p *Plumtree) SendToParent(treeId string, msgType string, msg []byte) error
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "send to parent", p.peers)
-	if tree, ok := p.trees[treeId]; !ok {
+	if tree, ok := p.trees[treeId]; !ok || tree.destroyed {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
 		err := p.sendDirectMsg(treeId, msgType, msg, tree.parent.Conn)
@@ -179,7 +177,7 @@ func (p *Plumtree) SendToParent(treeId string, msgType string, msg []byte) error
 // pissibly update in the future if other callers appear
 func (p *Plumtree) sendDirectMsg(treeId string, msgType string, msg []byte, receiver transport.Conn) error {
 	p.shared.logger.Println(p.shared.self.ID, "-", "Sending message")
-	if tree, ok := p.trees[treeId]; !ok {
+	if tree, ok := p.trees[treeId]; !ok || tree.destroyed {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
 		msgId, err := makeMsgID(p.shared.self.ID, msg)
@@ -225,8 +223,8 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Get children", p.peers)
-	if tree, ok := p.trees[treeId]; !ok {
-		return nil, fmt.Errorf("no tree with id=%s found", treeId)
+	if tree, ok := p.trees[treeId]; !ok || tree.destroyed {
+		return []data.Node{}, fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
 		children := slices.Clone(tree.eagerPushPeers)
 		result := make([]data.Node, 0)

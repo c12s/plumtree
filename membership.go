@@ -14,4 +14,5 @@ type MembershipProtocol interface {
 	OnPeerUp(handler func(peer hyparview.Peer))
 	OnPeerDown(handler func(peer hyparview.Peer))
 	AddCustomMsgHandler(func(msg []byte, sender transport.Conn) error)
+	GetState() any
 }
