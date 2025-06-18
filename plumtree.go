@@ -30,6 +30,8 @@ type Plumtree struct {
 	msgHandlers            map[MessageType]func(msg []byte, sender hyparview.Peer)
 	treeConstructedHandler func(tree TreeMetadata)
 	treeDestroyedHandler   func(tree TreeMetadata)
+	peerUpHandler          func(peer hyparview.Peer)
+	peerDownHandler        func(peer hyparview.Peer)
 	lock                   *sync.Mutex
 }
 
@@ -48,6 +50,8 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 		msgCh:                  make(chan ReceivedPlumtreeMessage),
 		treeConstructedHandler: func(tree TreeMetadata) {},
 		treeDestroyedHandler:   func(tree TreeMetadata) {},
+		peerUpHandler:          func(peer hyparview.Peer) {},
+		peerDownHandler:        func(peer hyparview.Peer) {},
 		lock:                   new(sync.Mutex),
 	}
 	p.msgHandlers = map[MessageType]func(msgAny []byte, sender hyparview.Peer){
@@ -222,7 +226,7 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.shared.logger.Println(p.shared.self.ID, "-", "Get children", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "Get children", p.peers)
 	if tree, ok := p.trees[treeId]; !ok || tree.destroyed {
 		return []data.Node{}, fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
@@ -258,18 +262,32 @@ func (p *Plumtree) OnTreeDestroyed(handler func(tree TreeMetadata)) {
 	p.treeDestroyedHandler = handler
 }
 
+// unlocked
+func (p *Plumtree) OnPeerUp(handler func(hyparview.Peer)) {
+	p.peerUpHandler = handler
+}
+
+// unlocked
+func (p *Plumtree) OnPeerDown(handler func(hyparview.Peer)) {
+	p.peerDownHandler = handler
+}
+
 // locked
 func (p *Plumtree) handleMsg(msg []byte, sender transport.Conn) error {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	p.shared.logger.Println(p.shared.self.ID, "-", "Custom message handler invoked")
-	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
 	p.shared.logger.Println(p.shared.self.ID, "-", "sender", sender)
 	index := slices.IndexFunc(p.peers, func(peer hyparview.Peer) bool {
 		return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
 	})
 	if index < 0 {
 		p.lock.Unlock()
+		err := sender.Disconnect()
+		if err != nil {
+			p.shared.logger.Println(err)
+		}
 		return errors.New("could not find peer in eager or lazy push peers")
 	}
 	peer := p.peers[index]
@@ -308,7 +326,7 @@ func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
 	if !slices.ContainsFunc(p.peers, func(p hyparview.Peer) bool {
 		return p.Node.ID == peer.Node.ID
 	}) {
@@ -318,7 +336,8 @@ func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
 			tree.onPeerUp(peer)
 		}
 	}
-	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.peerUpHandler(peer)
 }
 
 // locked
@@ -327,12 +346,13 @@ func (p *Plumtree) onPeerDown(peer hyparview.Peer) {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
 	p.peers = slices.DeleteFunc(p.peers, func(p hyparview.Peer) bool {
 		return p.Node.ID == peer.Node.ID
 	})
-	p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
 	for _, tree := range p.trees {
 		tree.onPeerDown(peer)
 	}
+	// p.peerDownHandler(peer)
 }

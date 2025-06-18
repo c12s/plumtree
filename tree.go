@@ -85,6 +85,7 @@ func (t *Tree) SendDirectMsg(msg PlumtreeCustomMessage, receiver transport.Conn)
 // locked by caller
 func (t *Tree) eagerPush(payload PlumtreeCustomMessage, sender data.Node) {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Eager push - sending")
+	removePeers := make([]hyparview.Peer, 0)
 	for _, peer := range t.eagerPushPeers {
 		t.shared.logger.Println(t.shared.self.ID, "-", "peer", peer)
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
@@ -94,13 +95,23 @@ func (t *Tree) eagerPush(payload PlumtreeCustomMessage, sender data.Node) {
 		err := send(payload, GOSSIP_MSG_TYPE, peer.Conn)
 		if err != nil {
 			t.shared.logger.Println(t.shared.self.ID, "-", "Error sending gossip msg to peer:", err)
+			removePeers = append(removePeers, peer)
 		}
+	}
+	for _, r := range removePeers {
+		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
+		t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
 	}
 }
 
 // locked by caller
 func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Lazy push - sending")
+	removePeers := make([]hyparview.Peer, 0)
 	for _, peer := range t.lazyPushPeers {
 		t.shared.logger.Println(t.shared.self.ID, "-", "peer", peer)
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
@@ -113,10 +124,19 @@ func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 		t.shared.logger.Printf("%s - Sending ihave msg to peer: %v\n", t.shared.self.ID, peer.Node.ID)
 		err := send(ihaveMsg, IHAVE_MSG_TYPE, peer.Conn)
 		if err != nil {
+			removePeers = append(removePeers, peer)
 			t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
 		}
 		// t.lazyQueue[peer.Node.ID] = append(t.lazyQueue[peer.Node.ID], msg)
 		t.shared.logger.Printf("%s - Added message to lazy queue for peer: %v\n", t.shared.self.ID, peer.Node.ID)
+	}
+	for _, r := range removePeers {
+		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
+		t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
 	}
 }
 

@@ -99,9 +99,9 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		return bytes.Equal(msg.MsgId, received.MsgId)
 	}) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
-		p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
-		p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		p.parent = &sender
 		p.receivedMsgs = append(p.receivedMsgs, msg)
 		p.stopTimers(msg.MsgId)
@@ -120,9 +120,9 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		p.lazyPush(msg, sender.Node)
 	} else {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)
-		p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
-		p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
 		err := send(pruneMsg, PRUNE_MSG_TYPE, sender.Conn)
 		if err != nil {
@@ -148,6 +148,8 @@ func (p *Tree) onPrune(msg PlumtreePruneMessage, sender hyparview.Peer) {
 // locker by caller
 func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing IHave message from peer: %v message IDs %v\n", p.shared.self.ID, sender.Node.ID, msg.MsgIds)
+	// todo: ??
+	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 	for _, msgId := range msg.MsgIds {
 		if slices.ContainsFunc(p.receivedMsgs, func(received PlumtreeCustomMessage) bool {
 			return bytes.Equal([]byte(received.MsgId), msgId)
