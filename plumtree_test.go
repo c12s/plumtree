@@ -67,7 +67,7 @@ func TestTreeConstruction(t *testing.T) {
 		defer plumtreeLogFile.Close()
 		ptLogger := log.New(plumtreeLogFile, "", log.LstdFlags|log.Lshortfile)
 		tree := NewPlumtree(plumtreeConfig, hv, ptLogger)
-		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s data.Node) bool {
+		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s data.Node, r int) bool {
 			log.Println(m)
 			log.Println(s)
 			log.Println(t)

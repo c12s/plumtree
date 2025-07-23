@@ -56,16 +56,17 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 func (t *Tree) Gossip(msg PlumtreeCustomMessage) error {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Gossiping message")
 	t.lock.Unlock()
-	proceed := t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self)
+	proceed := t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self, msg.Round)
 	t.shared.logger.Println("try lock")
 	t.lock.Lock()
 	if !proceed {
 		t.shared.logger.Println(t.shared.self.ID, "-", "Quit broadcast signal from client")
 		return nil
 	}
+	t.receivedMsgs = append(t.receivedMsgs, msg)
+	msg.Round++
 	t.eagerPush(msg, t.shared.self)
 	t.lazyPush(msg, t.shared.self)
-	t.receivedMsgs = append(t.receivedMsgs, msg)
 	t.shared.logger.Println(t.shared.self.ID, "-", "Message gossiped successfully")
 	return nil
 }
@@ -112,7 +113,10 @@ func (t *Tree) eagerPush(payload PlumtreeCustomMessage, sender data.Node) {
 func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Lazy push - sending")
 	removePeers := make([]hyparview.Peer, 0)
-	for _, peer := range t.lazyPushPeers {
+	for i, peer := range t.lazyPushPeers {
+		if i >= t.shared.config.Fanout-1 {
+			break
+		}
 		t.shared.logger.Println(t.shared.self.ID, "-", "peer", peer)
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
 			continue

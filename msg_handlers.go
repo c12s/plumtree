@@ -108,7 +108,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		delete(p.timers, string(msg.MsgId))
 		delete(p.missingMsgs, string(msg.MsgId))
 		p.lock.Unlock()
-		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
+		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node, msg.Round)
 		p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		if !proceed {

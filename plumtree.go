@@ -15,7 +15,7 @@ import (
 type sharedConfig struct {
 	self             data.Node
 	config           Config
-	gossipMsgHandler func(tree TreeMetadata, msgType string, msg []byte, s data.Node) bool
+	gossipMsgHandler func(tree TreeMetadata, msgType string, msg []byte, s data.Node, round int) bool
 	directMsgHandler func(tree TreeMetadata, msgType string, msg []byte, s data.Node)
 	logger           *log.Logger
 }
@@ -40,7 +40,7 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 		shared: &sharedConfig{
 			config:           config,
 			self:             protocol.Self(),
-			gossipMsgHandler: func(m TreeMetadata, t string, b []byte, s data.Node) bool { return true },
+			gossipMsgHandler: func(m TreeMetadata, t string, b []byte, s data.Node, r int) bool { return true },
 			directMsgHandler: func(m TreeMetadata, t string, b []byte, s data.Node) {},
 			logger:           logger,
 		},
@@ -243,7 +243,7 @@ func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 }
 
 // unlocked
-func (p *Plumtree) OnGossip(handler func(m TreeMetadata, t string, b []byte, s data.Node) bool) {
+func (p *Plumtree) OnGossip(handler func(m TreeMetadata, t string, b []byte, s data.Node, r int) bool) {
 	p.shared.gossipMsgHandler = handler
 }
 
