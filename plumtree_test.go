@@ -67,12 +67,11 @@ func TestTreeConstruction(t *testing.T) {
 		defer plumtreeLogFile.Close()
 		ptLogger := log.New(plumtreeLogFile, "", log.LstdFlags|log.Lshortfile)
 		tree := NewPlumtree(plumtreeConfig, hv, ptLogger)
-		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s data.Node, r int) bool {
+		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s data.Node) {
 			log.Println(m)
 			log.Println(s)
 			log.Println(t)
 			log.Println(string(b))
-			return true
 		})
 		tree.OnTreeConstructed(func(tree TreeMetadata) { log.Println("tree constructed", tree.Id) })
 		tree.OnTreeDestroyed(func(tree TreeMetadata) { log.Println("tree destroyed", tree.Id) })
@@ -92,7 +91,7 @@ func TestTreeConstruction(t *testing.T) {
 		log.Println(err)
 	}
 	time.Sleep(2 * time.Second)
-	err = trees[0].Gossip(t1.Id, "custom", []byte("hello"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -103,7 +102,7 @@ func TestTreeConstruction(t *testing.T) {
 	// 	log.Println(err)
 	// }
 	// time.Sleep(2 * time.Second)
-	err = trees[0].Gossip(t1.Id, "custom", []byte("hello2"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello2"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -126,12 +125,12 @@ func TestTreeConstruction(t *testing.T) {
 	// 	log.Println(err)
 	// }
 	// time.Sleep(2 * time.Second)
-	err = trees[0].Gossip(t1.Id, "custom", []byte("hello5"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello5"))
 	if err != nil {
 		log.Println(err)
 	}
 	time.Sleep(1 * time.Second)
-	err = trees[0].Gossip(t1.Id, "custom", []byte("hello6"))
+	err = trees[0].Broadcast(t1.Id, "custom", []byte("hello6"))
 	if err != nil {
 		log.Println(err)
 	}

@@ -53,16 +53,12 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 }
 
 // locked by caller
-func (t *Tree) Gossip(msg PlumtreeCustomMessage) error {
+func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Gossiping message")
 	t.lock.Unlock()
-	proceed := t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self, msg.Round)
+	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self)
 	t.shared.logger.Println("try lock")
 	t.lock.Lock()
-	if !proceed {
-		t.shared.logger.Println(t.shared.self.ID, "-", "Quit broadcast signal from client")
-		return nil
-	}
 	t.receivedMsgs = append(t.receivedMsgs, msg)
 	msg.Round++
 	t.eagerPush(msg, t.shared.self)
