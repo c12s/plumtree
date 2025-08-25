@@ -1,28 +1,17 @@
 package plumtree
 
 import (
+	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
 )
 
-type MessageType int8
-
 const (
-	GOSSIP_MSG_TYPE MessageType = iota
-	DIRECT_MSG_TYPE
-	PRUNE_MSG_TYPE
-	IHAVE_MSG_TYPE
-	GRAFT_MSG_TYPE
-	UNKNOWN_MSG_TYPE
+	GOSSIP_MSG_TYPE data.MessageType = data.UNKNOWN + 1
+	DIRECT_MSG_TYPE                  = data.UNKNOWN + 2
+	PRUNE_MSG_TYPE                   = data.UNKNOWN + 3
+	IHAVE_MSG_TYPE                   = data.UNKNOWN + 4
+	GRAFT_MSG_TYPE                   = data.UNKNOWN + 5
 )
-
-func KnownMsgTypes() []MessageType {
-	return []MessageType{GOSSIP_MSG_TYPE, DIRECT_MSG_TYPE, PRUNE_MSG_TYPE, IHAVE_MSG_TYPE, GRAFT_MSG_TYPE}
-}
-
-type Message struct {
-	Type    MessageType
-	Payload any
-}
 
 type PlumtreeCustomMessage struct {
 	Metadata TreeMetadata

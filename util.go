@@ -23,14 +23,14 @@ func move(peer hyparview.Peer, from, to *[]hyparview.Peer) {
 	})
 }
 
-func send(payload any, msgType MessageType, to transport.Conn) error {
-	pruneMsgSerialized, err := Serialize(Message{Type: msgType, Payload: payload})
-	if err != nil {
-		return fmt.Errorf("error serializing %v message: %v", msgType, err)
-	}
-	err = to.Send(data.Message{
-		Type:    data.CUSTOM,
-		Payload: pruneMsgSerialized,
+func send(payload any, msgType data.MessageType, to transport.Conn) error {
+	// msgSerialized, err := transport.Serialize(data.Message{Type: msgType, Payload: payload})
+	// if err != nil {
+	// 	return fmt.Errorf("error serializing %v message: %v", msgType, err)
+	// }
+	err := to.Send(data.Message{
+		Type:    msgType,
+		Payload: payload,
 	})
 	if err != nil {
 		return fmt.Errorf("error sending %v message: %v", msgType, err)

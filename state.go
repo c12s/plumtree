@@ -24,7 +24,7 @@ func (p *Plumtree) GetState() any {
 	// p.lock.Lock()
 	// defer p.lock.Unlock()
 	s := State{
-		HyParViewState: p.protocol.GetState(),
+		HyParViewState: p.Protocol.GetState(),
 		Peers:          make([]string, len(p.peers)),
 	}
 	for i, p := range p.peers {

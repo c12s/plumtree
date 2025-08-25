@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/c12s/hyparview/hyparview"
+	"github.com/c12s/hyparview/transport"
 )
 
 // locker by caller
 func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 	gossipMsg := PlumtreeCustomMessage{}
-	err := Deserialize(msgBytes, &gossipMsg)
+	err := transport.Deserialize(msgBytes, &gossipMsg)
 	if err != nil {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling gossip message:", err)
 		return
@@ -35,7 +36,7 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 // locker by caller
 func (p *Plumtree) onDirect(msgBytes []byte, sender hyparview.Peer) {
 	directMsg := PlumtreeCustomMessage{}
-	err := Deserialize(msgBytes, &directMsg)
+	err := transport.Deserialize(msgBytes, &directMsg)
 	if err != nil {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling direct message:", err)
 		return
@@ -50,7 +51,7 @@ func (p *Plumtree) onDirect(msgBytes []byte, sender hyparview.Peer) {
 // locker by caller
 func (p *Plumtree) onPrune(msgBytes []byte, sender hyparview.Peer) {
 	pruneMsg := PlumtreePruneMessage{}
-	err := Deserialize(msgBytes, &pruneMsg)
+	err := transport.Deserialize(msgBytes, &pruneMsg)
 	if err != nil {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling prune message:", err)
 		return
@@ -65,7 +66,7 @@ func (p *Plumtree) onPrune(msgBytes []byte, sender hyparview.Peer) {
 // locker by caller
 func (p *Plumtree) onIHave(msgBytes []byte, sender hyparview.Peer) {
 	ihaveMsg := PlumtreeIHaveMessage{}
-	err := Deserialize(msgBytes, &ihaveMsg)
+	err := transport.Deserialize(msgBytes, &ihaveMsg)
 	if err != nil {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling IHave message:", err)
 		return
@@ -80,7 +81,7 @@ func (p *Plumtree) onIHave(msgBytes []byte, sender hyparview.Peer) {
 // locker by caller
 func (p *Plumtree) onGraft(msgBytes []byte, sender hyparview.Peer) {
 	graftMsg := PlumtreeGraftMessage{}
-	err := Deserialize(msgBytes, &graftMsg)
+	err := transport.Deserialize(msgBytes, &graftMsg)
 	if err != nil {
 		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling graft message:", err)
 		return
@@ -107,10 +108,10 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		p.stopTimers(msg.MsgId)
 		delete(p.timers, string(msg.MsgId))
 		delete(p.missingMsgs, string(msg.MsgId))
-		p.lock.Unlock()
+		// p.lock.Unlock()
 		p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
 		p.shared.logger.Println("try lock")
-		p.lock.Lock()
+		// p.lock.Lock()
 		msg.Round++
 		p.eagerPush(msg, sender.Node)
 		p.lazyPush(msg, sender.Node)

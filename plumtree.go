@@ -1,7 +1,6 @@
 package plumtree
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -21,13 +20,13 @@ type sharedConfig struct {
 }
 
 type Plumtree struct {
-	shared                 *sharedConfig
-	protocol               MembershipProtocol
-	peers                  []hyparview.Peer
-	trees                  map[string]*Tree
-	msgCh                  chan ReceivedPlumtreeMessage
-	msgSubscription        transport.Subscription
-	msgHandlers            map[MessageType]func(msg []byte, sender hyparview.Peer)
+	shared   *sharedConfig
+	Protocol MembershipProtocol
+	peers    []hyparview.Peer
+	trees    map[string]*Tree
+	msgCh    chan ReceivedPlumtreeMessage
+	// msgSubscription transport.Subscription
+	// msgHandlers            map[MessageType]func(msg []byte, sender hyparview.Peer)
 	treeConstructedHandler func(tree TreeMetadata)
 	treeDestroyedHandler   func(tree TreeMetadata)
 	peerUpHandler          func(peer hyparview.Peer)
@@ -44,7 +43,7 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 			directMsgHandler: func(m TreeMetadata, t string, b []byte, s data.Node) {},
 			logger:           logger,
 		},
-		protocol:               protocol,
+		Protocol:               protocol,
 		peers:                  protocol.GetPeers(config.Fanout),
 		trees:                  make(map[string]*Tree),
 		msgCh:                  make(chan ReceivedPlumtreeMessage),
@@ -54,31 +53,28 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 		peerDownHandler:        func(peer hyparview.Peer) {},
 		lock:                   new(sync.Mutex),
 	}
-	p.msgHandlers = map[MessageType]func(msgAny []byte, sender hyparview.Peer){
-		GOSSIP_MSG_TYPE: p.onGossip,
-		DIRECT_MSG_TYPE: p.onDirect,
-		PRUNE_MSG_TYPE:  p.onPrune,
-		IHAVE_MSG_TYPE:  p.onIHave,
-		GRAFT_MSG_TYPE:  p.onGraft,
-	}
-	p.msgSubscription = p.processMsgs()
-	p.protocol.OnPeerUp(p.onPeerUp)
-	p.protocol.OnPeerDown(p.onPeerDown)
-	p.protocol.AddCustomMsgHandler(p.handleMsg)
+	protocol.AddClientMsgHandler(GOSSIP_MSG_TYPE, p.onGossip)
+	protocol.AddClientMsgHandler(DIRECT_MSG_TYPE, p.onDirect)
+	protocol.AddClientMsgHandler(PRUNE_MSG_TYPE, p.onPrune)
+	protocol.AddClientMsgHandler(IHAVE_MSG_TYPE, p.onIHave)
+	protocol.AddClientMsgHandler(GRAFT_MSG_TYPE, p.onGraft)
+	// p.msgSubscription = p.processMsgs()
+	p.Protocol.OnPeerUp(p.onPeerUp)
+	p.Protocol.OnPeerDown(p.onPeerDown)
 	p.shared.logger.Println(p.shared.self.ID, "-", "Plumtree initialized", "peers", p.peers)
 	return p
 }
 
 // unlocked
 func (p *Plumtree) Join(id, address string) error {
-	return p.protocol.Join(id, address)
+	return p.Protocol.Join(id, address)
 }
 
 // unlocked
 func (p *Plumtree) Leave() {
 	// p.msgSubscription.Unsubscribe()
 	p.shared.logger.Println("pt leave")
-	p.protocol.Leave()
+	p.Protocol.Leave()
 	p.shared.logger.Println("pt left")
 	// for _, t := range p.trees {
 	// 	t.stopCh <- struct{}{}
@@ -222,6 +218,16 @@ func (p *Plumtree) GetPeersNum() int {
 }
 
 // locked
+func (p *Plumtree) GetPeers() []hyparview.Peer {
+	p.shared.logger.Println("try lock")
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.shared.logger.Println(p.shared.self.ID, "-", "Get peers")
+	p.shared.logger.Println(p.shared.self.ID, "-", p.peers)
+	return slices.Clone(p.peers)
+}
+
+// locked
 func (p *Plumtree) GetChildren(treeId string) ([]data.Node, error) {
 	p.shared.logger.Println("try lock")
 	p.lock.Lock()
@@ -272,53 +278,53 @@ func (p *Plumtree) OnPeerDown(handler func(hyparview.Peer)) {
 	p.peerDownHandler = handler
 }
 
-// locked
-func (p *Plumtree) handleMsg(msg []byte, sender transport.Conn) error {
-	p.shared.logger.Println("try lock")
-	p.lock.Lock()
-	p.shared.logger.Println(p.shared.self.ID, "-", "Custom message handler invoked")
-	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
-	p.shared.logger.Println(p.shared.self.ID, "-", "sender", sender)
-	index := slices.IndexFunc(p.peers, func(peer hyparview.Peer) bool {
-		return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
-	})
-	if index < 0 {
-		p.lock.Unlock()
-		err := sender.Disconnect()
-		if err != nil {
-			p.shared.logger.Println(err)
-		}
-		return errors.New("could not find peer in eager or lazy push peers")
-	}
-	peer := p.peers[index]
-	p.lock.Unlock()
-	p.shared.logger.Printf("%s - received from %s\n", p.shared.self.ID, peer.Node.ID)
-	p.msgCh <- ReceivedPlumtreeMessage{MsgBytes: msg, Sender: peer}
-	return nil
-}
+// // locked
+// func (p *Plumtree) handleMsg(msg []byte, sender transport.Conn) error {
+// 	p.shared.logger.Println("try lock")
+// 	p.lock.Lock()
+// 	p.shared.logger.Println(p.shared.self.ID, "-", "Custom message handler invoked")
+// 	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
+// 	p.shared.logger.Println(p.shared.self.ID, "-", "sender", sender)
+// 	index := slices.IndexFunc(p.peers, func(peer hyparview.Peer) bool {
+// 		return sender != nil && peer.Conn != nil && peer.Conn.GetAddress() == sender.GetAddress()
+// 	})
+// 	if index < 0 {
+// 		p.lock.Unlock()
+// 		err := sender.Disconnect()
+// 		if err != nil {
+// 			p.shared.logger.Println(err)
+// 		}
+// 		return errors.New("could not find peer in eager or lazy push peers")
+// 	}
+// 	peer := p.peers[index]
+// 	p.lock.Unlock()
+// 	p.shared.logger.Printf("%s - received from %s\n", p.shared.self.ID, peer.Node.ID)
+// 	p.msgCh <- ReceivedPlumtreeMessage{MsgBytes: msg, Sender: peer}
+// 	return nil
+// }
 
-// locked
-func (p *Plumtree) processMsgs() transport.Subscription {
-	p.shared.logger.Println(p.shared.self.ID, "-", "Message subscription started")
-	return transport.Subscribe(p.msgCh, func(received ReceivedPlumtreeMessage) {
-		p.shared.logger.Println(p.shared.self.ID, "-", "Received message in subscription handler", received.MsgBytes)
-		p.shared.logger.Println("try lock")
-		p.lock.Lock()
-		defer p.lock.Unlock()
-		msgType := GetMsgType(received.MsgBytes)
-		handler := p.msgHandlers[msgType]
-		if handler == nil {
-			p.shared.logger.Printf("%s - no handler found for message type %v", p.shared.self.ID, msgType)
-			return
-		}
-		payload, err := transport.GetPayload(received.MsgBytes)
-		if err != nil {
-			p.shared.logger.Println(p.shared.self.ID, "-", err)
-			return
-		}
-		handler(payload, received.Sender)
-	})
-}
+// // locked
+// func (p *Plumtree) processMsgs() transport.Subscription {
+// 	p.shared.logger.Println(p.shared.self.ID, "-", "Message subscription started")
+// 	return transport.Subscribe(p.msgCh, func(received ReceivedPlumtreeMessage) {
+// 		p.shared.logger.Println(p.shared.self.ID, "-", "Received message in subscription handler", received.MsgBytes)
+// 		p.shared.logger.Println("try lock")
+// 		p.lock.Lock()
+// 		defer p.lock.Unlock()
+// 		msgType := GetMsgType(received.MsgBytes)
+// 		handler := p.msgHandlers[msgType]
+// 		if handler == nil {
+// 			p.shared.logger.Printf("%s - no handler found for message type %v", p.shared.self.ID, msgType)
+// 			return
+// 		}
+// 		payload, err := transport.GetPayload(received.MsgBytes)
+// 		if err != nil {
+// 			p.shared.logger.Println(p.shared.self.ID, "-", err)
+// 			return
+// 		}
+// 		handler(payload, received.Sender)
+// 	})
+// }
 
 // locked
 func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
@@ -336,14 +342,17 @@ func (p *Plumtree) onPeerUp(peer hyparview.Peer) {
 			tree.onPeerUp(peer)
 		}
 	}
-	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
-	// p.peerUpHandler(peer)
+	if p.peerUpHandler != nil {
+		p.lock.Unlock()
+		p.peerUpHandler(peer)
+		p.lock.Lock()
+	}
 }
 
 // locked
 func (p *Plumtree) onPeerDown(peer hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing onPeerDown peer: %v\n", p.shared.self.ID, peer.Node.ID)
-	p.shared.logger.Println("try lock")
+	// p.shared.logger.Println("try lock")
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	// p.shared.logger.Println(p.shared.self.ID, "-", "peers", p.peers)
@@ -354,5 +363,9 @@ func (p *Plumtree) onPeerDown(peer hyparview.Peer) {
 	for _, tree := range p.trees {
 		tree.onPeerDown(peer)
 	}
-	// p.peerDownHandler(peer)
+	if p.peerDownHandler != nil {
+		p.lock.Unlock()
+		p.peerDownHandler(peer)
+		p.lock.Lock()
+	}
 }

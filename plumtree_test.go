@@ -85,7 +85,7 @@ func TestTreeConstruction(t *testing.T) {
 		}
 	}
 
-	t1 := TreeMetadata{Id: "t1", Score: "t1"}
+	t1 := TreeMetadata{Id: "t1", Score: 1}
 	err := trees[0].ConstructTree(t1)
 	if err != nil {
 		log.Println(err)
@@ -143,7 +143,7 @@ func TestTreeConstruction(t *testing.T) {
 
 	for _, tree := range trees {
 		log.Println("********************")
-		log.Println(tree.protocol.Self().ID)
+		log.Println(tree.Protocol.Self().ID)
 		for _, t := range tree.trees {
 			log.Println("ID", t.metadata.Id)
 			log.Println("parent ID", t.parent)
@@ -180,7 +180,7 @@ func drawTrees(trees []*Plumtree, suffix string) {
 			if g == nil {
 				continue
 			}
-			g.AddVertex(tree.protocol.Self().ID)
+			g.AddVertex(tree.Protocol.Self().ID)
 		}
 	}
 	for _, tree := range trees {
@@ -190,7 +190,7 @@ func drawTrees(trees []*Plumtree, suffix string) {
 				continue
 			}
 			for _, peer := range t.eagerPushPeers {
-				g.AddEdge(tree.protocol.Self().ID, peer.Node.ID)
+				g.AddEdge(tree.Protocol.Self().ID, peer.Node.ID)
 			}
 		}
 	}

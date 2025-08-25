@@ -2,6 +2,7 @@ package plumtree
 
 import (
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/c12s/hyparview/data"
@@ -11,12 +12,16 @@ import (
 
 type TreeMetadata struct {
 	Id    string
-	Score string
+	Score int
 }
 
-func (m TreeMetadata) HasHigherScore(tree TreeMetadata) bool {
-	return m.Score > tree.Score || m.Id > tree.Id
+func (t TreeMetadata) NodeID() string {
+	return strings.SplitN(t.Id, "_", 2)[1]
 }
+
+// func (m TreeMetadata) HasHigherScore(tree TreeMetadata) bool {
+// 	return m.Score > tree.Score || m.Id > tree.Id
+// }
 
 type Tree struct {
 	shared         *sharedConfig

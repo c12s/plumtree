@@ -3,7 +3,6 @@ package plumtree
 import (
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
-	"github.com/c12s/hyparview/transport"
 )
 
 type MembershipProtocol interface {
@@ -13,6 +12,6 @@ type MembershipProtocol interface {
 	GetPeers(fanout int) []hyparview.Peer
 	OnPeerUp(handler func(peer hyparview.Peer))
 	OnPeerDown(handler func(peer hyparview.Peer))
-	AddCustomMsgHandler(func(msg []byte, sender transport.Conn) error)
+	AddClientMsgHandler(data.MessageType, func(msg []byte, sender hyparview.Peer))
 	GetState() any
 }
