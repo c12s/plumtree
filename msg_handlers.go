@@ -105,9 +105,11 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		p.parent = &sender
 		p.receivedMsgs = append(p.receivedMsgs, msg)
+		p.lock.Lock()
 		p.stopTimers(msg.MsgId)
 		delete(p.timers, string(msg.MsgId))
 		delete(p.missingMsgs, string(msg.MsgId))
+		p.lock.Unlock()
 		// p.lock.Unlock()
 		p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
 		p.shared.logger.Println("try lock")
