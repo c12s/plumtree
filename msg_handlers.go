@@ -155,10 +155,12 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		}) {
 			continue
 		}
+		p.lock.Lock()
 		p.missingMsgs[string(msgId)] = append(p.missingMsgs[string(msgId)], sender)
 		if _, ok := p.timers[string(msgId)]; !ok {
 			p.setTimer(msgId)
 		}
+		p.lock.Unlock()
 	}
 }
 
