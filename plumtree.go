@@ -5,6 +5,7 @@ import (
 	"log"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
@@ -53,16 +54,58 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 		peerDownHandler:        func(peer hyparview.Peer) {},
 		lock:                   new(sync.Mutex),
 	}
-	protocol.AddClientMsgHandler(GOSSIP_MSG_TYPE, p.onGossip)
-	protocol.AddClientMsgHandler(DIRECT_MSG_TYPE, p.onDirect)
-	protocol.AddClientMsgHandler(PRUNE_MSG_TYPE, p.onPrune)
-	protocol.AddClientMsgHandler(IHAVE_MSG_TYPE, p.onIHave)
-	protocol.AddClientMsgHandler(GRAFT_MSG_TYPE, p.onGraft)
+	protocol.AddClientMsgHandler(GOSSIP_MSG_TYPE, func(msg []byte, sender hyparview.Peer) {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		p.onGossip(msg, sender)
+	})
+	protocol.AddClientMsgHandler(DIRECT_MSG_TYPE, func(msg []byte, sender hyparview.Peer) {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		p.onDirect(msg, sender)
+	})
+	protocol.AddClientMsgHandler(PRUNE_MSG_TYPE, func(msg []byte, sender hyparview.Peer) {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		p.onPrune(msg, sender)
+	})
+	protocol.AddClientMsgHandler(IHAVE_MSG_TYPE, func(msg []byte, sender hyparview.Peer) {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		p.onIHave(msg, sender)
+	})
+	protocol.AddClientMsgHandler(GRAFT_MSG_TYPE, func(msg []byte, sender hyparview.Peer) {
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		p.onGraft(msg, sender)
+	})
 	// p.msgSubscription = p.processMsgs()
 	p.Protocol.OnPeerUp(p.onPeerUp)
 	p.Protocol.OnPeerDown(p.onPeerDown)
 	p.shared.logger.Println(p.shared.self.ID, "-", "Plumtree initialized", "peers", p.peers)
+	go p.cleanUp()
 	return p
+}
+
+func (p *Plumtree) cleanUp() {
+	for range time.NewTicker(1 * time.Second).C {
+		p.shared.logger.Println("clean up trees")
+		removeIds := []string{}
+		p.lock.Lock()
+		for id, tree := range p.trees {
+			p.shared.logger.Println(id)
+			p.shared.logger.Println(len(tree.receivedMsgs))
+			p.shared.logger.Println(tree.lastMsg)
+			if len(tree.receivedMsgs) > 0 && tree.lastMsg+30 < time.Now().Unix() {
+				removeIds = append(removeIds, id)
+			}
+		}
+		p.shared.logger.Println(removeIds)
+		for _, id := range removeIds {
+			delete(p.trees, id)
+		}
+		p.lock.Unlock()
+	}
 }
 
 // unlocked

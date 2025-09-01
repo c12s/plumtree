@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
@@ -36,6 +37,7 @@ type Tree struct {
 	// stopCh         chan struct{}
 	lock      *sync.Mutex
 	destroyed bool
+	lastMsg   int64
 }
 
 func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer, lock *sync.Mutex) *Tree {
@@ -60,6 +62,7 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 // locked by caller
 func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Gossiping message")
+	t.lastMsg = time.Now().Unix()
 	t.lock.Unlock()
 	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self)
 	t.shared.logger.Println("try lock")

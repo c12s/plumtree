@@ -24,10 +24,10 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "tree created", tree.metadata.Id)
 		p.trees[tree.metadata.Id] = tree
 		if p.treeConstructedHandler != nil {
-			// p.lock.Unlock()
+			p.lock.Unlock()
 			go p.treeConstructedHandler(tree.metadata)
 			// p.shared.logger.Println("try lock")
-			// p.lock.Lock()
+			p.lock.Lock()
 		}
 	}
 	tree.onGossip(gossipMsg, sender)
@@ -101,19 +101,20 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	}) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
 		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
+		p.lastMsg = time.Now().Unix()
 		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 		p.parent = &sender
 		p.receivedMsgs = append(p.receivedMsgs, msg)
-		p.lock.Lock()
+		// p.lock.Lock()
 		p.stopTimers(msg.MsgId)
 		delete(p.timers, string(msg.MsgId))
 		delete(p.missingMsgs, string(msg.MsgId))
-		p.lock.Unlock()
 		// p.lock.Unlock()
+		p.lock.Unlock()
 		p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
-		p.shared.logger.Println("try lock")
-		// p.lock.Lock()
+		// p.shared.logger.Println("try lock")
+		p.lock.Lock()
 		msg.Round++
 		p.eagerPush(msg, sender.Node)
 		p.lazyPush(msg, sender.Node)
@@ -155,12 +156,12 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		}) {
 			continue
 		}
-		p.lock.Lock()
+		// p.lock.Lock()
 		p.missingMsgs[string(msgId)] = append(p.missingMsgs[string(msgId)], sender)
 		if _, ok := p.timers[string(msgId)]; !ok {
 			p.setTimer(msgId)
 		}
-		p.lock.Unlock()
+		// p.lock.Unlock()
 	}
 }
 
