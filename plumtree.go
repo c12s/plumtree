@@ -89,18 +89,18 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 
 func (p *Plumtree) cleanUp() {
 	for range time.NewTicker(1 * time.Second).C {
-		p.shared.logger.Println("clean up trees")
+		// p.shared.logger.Println("clean up trees")
 		removeIds := []string{}
 		p.lock.Lock()
 		for id, tree := range p.trees {
-			p.shared.logger.Println(id)
-			p.shared.logger.Println(len(tree.receivedMsgs))
-			p.shared.logger.Println(tree.lastMsg)
-			if len(tree.receivedMsgs) > 0 && tree.lastMsg+30 < time.Now().Unix() {
+			// p.shared.logger.Println(id)
+			// p.shared.logger.Println(len(tree.receivedMsgs))
+			// p.shared.logger.Println(tree.lastMsg)
+			if len(tree.receivedMsgs) > 0 && tree.lastMsg+30 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
 				removeIds = append(removeIds, id)
 			}
 		}
-		p.shared.logger.Println(removeIds)
+		// p.shared.logger.Println(removeIds)
 		for _, id := range removeIds {
 			delete(p.trees, id)
 		}
