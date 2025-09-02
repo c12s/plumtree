@@ -10,7 +10,8 @@ const (
 	DIRECT_MSG_TYPE                  = data.UNKNOWN + 2
 	PRUNE_MSG_TYPE                   = data.UNKNOWN + 3
 	IHAVE_MSG_TYPE                   = data.UNKNOWN + 4
-	GRAFT_MSG_TYPE                   = data.UNKNOWN + 5
+	FORGET_MSG_TYPE                  = data.UNKNOWN + 5
+	GRAFT_MSG_TYPE                   = data.UNKNOWN + 6
 )
 
 type PlumtreeCustomMessage struct {
@@ -28,6 +29,11 @@ type PlumtreePruneMessage struct {
 type PlumtreeIHaveMessage struct {
 	Metadata TreeMetadata
 	MsgIds   [][]byte
+}
+
+type PlumtreeForgetMessage struct {
+	Metadata TreeMetadata
+	MsgId    []byte
 }
 
 type PlumtreeGraftMessage struct {

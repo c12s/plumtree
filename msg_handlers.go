@@ -26,7 +26,7 @@ func (p *Plumtree) onGossip(msgBytes []byte, sender hyparview.Peer) {
 		if p.treeConstructedHandler != nil {
 			p.lock.Unlock()
 			go p.treeConstructedHandler(tree.metadata)
-			// p.shared.logger.Println("try lock")
+			// // p.shared.logger.Println("try lock")
 			p.lock.Lock()
 		}
 	}
@@ -79,6 +79,21 @@ func (p *Plumtree) onIHave(msgBytes []byte, sender hyparview.Peer) {
 }
 
 // locker by caller
+func (p *Plumtree) onForget(msgBytes []byte, sender hyparview.Peer) {
+	forgetMsg := PlumtreeForgetMessage{}
+	err := transport.Deserialize(msgBytes, &forgetMsg)
+	if err != nil {
+		p.shared.logger.Println(p.shared.self.ID, "-", "Error unmarshaling forget message:", err)
+		return
+	}
+	if tree, ok := p.trees[forgetMsg.Metadata.Id]; !ok {
+		p.shared.logger.Printf("%s - tree with id=%s not found\n", p.shared.self.ID, forgetMsg.Metadata.Id)
+	} else {
+		tree.onForget(forgetMsg, sender)
+	}
+}
+
+// locker by caller
 func (p *Plumtree) onGraft(msgBytes []byte, sender hyparview.Peer) {
 	graftMsg := PlumtreeGraftMessage{}
 	err := transport.Deserialize(msgBytes, &graftMsg)
@@ -112,12 +127,16 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		delete(p.missingMsgs, string(msg.MsgId))
 		// p.lock.Unlock()
 		p.lock.Unlock()
-		p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender.Node)
-		// p.shared.logger.Println("try lock")
+		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
+		// // p.shared.logger.Println("try lock")
 		p.lock.Lock()
-		msg.Round++
-		p.eagerPush(msg, sender.Node)
-		p.lazyPush(msg, sender.Node)
+		if !proceed {
+			p.forget(msg.MsgId, sender)
+		} else {
+			msg.Round++
+			p.eagerPush(msg, sender.Node)
+			p.lazyPush(msg, sender.Node)
+		}
 	} else {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)
 		// p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
@@ -156,6 +175,9 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		}) {
 			continue
 		}
+		if _, ok := p.forgottenMsgs[string(msgId)]; ok {
+			continue
+		}
 		// p.lock.Lock()
 		p.missingMsgs[string(msgId)] = append(p.missingMsgs[string(msgId)], sender)
 		if _, ok := p.timers[string(msgId)]; !ok {
@@ -185,19 +207,34 @@ func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 	}
 }
 
+// locker by caller
+func (p *Tree) onForget(msg PlumtreeForgetMessage, sender hyparview.Peer) {
+	p.shared.logger.Printf("%s - Processing forget message from peer: %v message ID %v\n", p.shared.self.ID, sender.Node.ID, msg.MsgId)
+	if _, ok := p.forgottenMsgs[string(msg.MsgId)]; ok {
+		// todo: nepotrebno?
+		p.shared.logger.Println("already forgot msg with id", msg.MsgId)
+		return
+	}
+	p.forgottenMsgs[string(msg.MsgId)] = struct{}{}
+	p.stopTimers(msg.MsgId)
+	delete(p.timers, string(msg.MsgId))
+	delete(p.missingMsgs, string(msg.MsgId))
+	p.forget(msg.MsgId, sender)
+}
+
 // locked
 func (p *Tree) setTimer(msgId []byte) {
 	go func() {
-		p.shared.logger.Println(p.shared.self.ID, "-", p.shared.self.ID, "-", "started timer for msg", msgId)
+		p.shared.logger.Println(p.shared.self.ID, "-", "started timer for msg", msgId)
 		quitCh := make(chan struct{})
-		p.shared.logger.Println("try lock")
+		// p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		p.timers[string(msgId)] = append(p.timers[string(msgId)], quitCh)
 		p.lock.Unlock()
 		p.shared.logger.Println("missing msg timeout", p.shared.config.MissingMsgTimeout)
 		select {
 		case <-time.NewTicker(time.Duration(p.shared.config.MissingMsgTimeout) * time.Second).C:
-			p.shared.logger.Println("try lock")
+			// p.shared.logger.Println("try lock")
 			p.lock.Lock()
 			defer p.lock.Unlock()
 			p.timers[string(msgId)] = slices.DeleteFunc(p.timers[string(msgId)], func(ch chan struct{}) bool {

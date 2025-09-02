@@ -32,6 +32,7 @@ type Tree struct {
 	lazyPushPeers  []hyparview.Peer
 	receivedMsgs   []PlumtreeCustomMessage
 	missingMsgs    map[string][]hyparview.Peer
+	forgottenMsgs  map[string]struct{}
 	// lazyQueue      map[string][]PlumtreeCustomMessage
 	timers map[string][]chan struct{}
 	// stopCh         chan struct{}
@@ -49,6 +50,7 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		lazyPushPeers:  make([]hyparview.Peer, 0),
 		receivedMsgs:   make([]PlumtreeCustomMessage, 0),
 		missingMsgs:    make(map[string][]hyparview.Peer),
+		forgottenMsgs:  make(map[string]struct{}),
 		// lazyQueue:      make(map[string][]PlumtreeCustomMessage),
 		timers: make(map[string][]chan struct{}),
 		// stopCh:         make(chan struct{}),
@@ -64,8 +66,8 @@ func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Gossiping message")
 	t.lastMsg = time.Now().Unix()
 	t.lock.Unlock()
-	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, t.shared.self)
-	t.shared.logger.Println("try lock")
+	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, hyparview.Peer{Node: t.shared.self})
+	// t.shared.logger.Println("try lock")
 	t.lock.Lock()
 	t.receivedMsgs = append(t.receivedMsgs, msg)
 	msg.Round++
@@ -225,4 +227,32 @@ func (t *Tree) onPeerDown(peer hyparview.Peer) {
 		})
 	}
 	// delete(t.lazyQueue, peer.Node.ID)
+}
+
+func (t *Tree) forget(msgId []byte, sender hyparview.Peer) {
+	t.shared.logger.Println(t.shared.self.ID, "-", "Forget msg - sending")
+	removePeers := make([]hyparview.Peer, 0)
+	for _, peer := range t.eagerPushPeers {
+		// t.shared.logger.Println(t.shared.self.ID, "-", "peer", peer)
+		if sender.Node.ID == peer.Node.ID || peer.Conn == nil {
+			continue
+		}
+		t.shared.logger.Printf("%s - Sending forget msg id=%v to peer: %v\n", t.shared.self.ID, msgId, peer.Node.ID)
+		err := send(PlumtreeForgetMessage{
+			Metadata: t.metadata,
+			MsgId:    msgId,
+		}, FORGET_MSG_TYPE, peer.Conn)
+		if err != nil {
+			t.shared.logger.Println(t.shared.self.ID, "-", "Error sending forget msg to peer:", err)
+			removePeers = append(removePeers, peer)
+		}
+	}
+	for _, r := range removePeers {
+		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
+		t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
+			return r.Node.ID == p.Node.ID
+		})
+	}
 }

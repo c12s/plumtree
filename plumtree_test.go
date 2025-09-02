@@ -67,11 +67,12 @@ func TestTreeConstruction(t *testing.T) {
 		defer plumtreeLogFile.Close()
 		ptLogger := log.New(plumtreeLogFile, "", log.LstdFlags|log.Lshortfile)
 		tree := NewPlumtree(plumtreeConfig, hv, ptLogger)
-		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s data.Node) {
+		tree.OnGossip(func(m TreeMetadata, t string, b []byte, s hyparview.Peer) bool {
 			log.Println(m)
 			log.Println(s)
 			log.Println(t)
 			log.Println(string(b))
+			return true
 		})
 		tree.OnTreeConstructed(func(tree TreeMetadata) { log.Println("tree constructed", tree.Id) })
 		tree.OnTreeDestroyed(func(tree TreeMetadata) { log.Println("tree destroyed", tree.Id) })
