@@ -143,7 +143,6 @@ func (p *Plumtree) ConstructTree(metadata TreeMetadata) error {
 	} else {
 		tree.destroyed = false
 	}
-	// tree := NewTree(p.shared, metadata, slices.Clone(p.peers), p.lock)
 	p.shared.logger.Println(p.shared.self.ID, "-", "tree created", metadata.Id)
 	p.trees[metadata.Id] = tree
 	if p.treeConstructedHandler != nil {
