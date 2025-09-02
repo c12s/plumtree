@@ -119,10 +119,10 @@ func (t *Tree) eagerPush(payload PlumtreeCustomMessage, sender data.Node) {
 func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Lazy push - sending")
 	removePeers := make([]hyparview.Peer, 0)
-	for i, peer := range t.lazyPushPeers {
-		if i >= t.shared.config.Fanout-1 {
-			break
-		}
+	for _, peer := range t.lazyPushPeers {
+		// if i >= t.shared.config.Fanout-1 {
+		// 	break
+		// }
 		t.shared.logger.Println(t.shared.self.ID, "-", "peer", peer)
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
 			continue
