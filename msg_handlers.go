@@ -169,6 +169,7 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing IHave message from peer: %v message IDs %v\n", p.shared.self.ID, sender.Node.ID, msg.MsgIds)
 	// todo: ??
 	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
+	p.lastMsg = time.Now().Unix()
 	for _, msgId := range msg.MsgIds {
 		if slices.ContainsFunc(p.receivedMsgs, func(received PlumtreeCustomMessage) bool {
 			return bytes.Equal([]byte(received.MsgId), msgId)
