@@ -118,9 +118,11 @@ func (p *Plumtree) Join(id, address string) error {
 	return p.Protocol.Join(id, address)
 }
 
-// unlocked
+// locked
 func (p *Plumtree) Leave() {
 	// p.msgSubscription.Unsubscribe()
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.shared.logger.Println("pt leave")
 	p.Protocol.Leave()
 	p.peers = make([]hyparview.Peer, 0)
