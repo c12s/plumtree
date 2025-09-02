@@ -88,7 +88,7 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 	p.Protocol.OnPeerUp(p.onPeerUp)
 	p.Protocol.OnPeerDown(p.onPeerDown)
 	p.shared.logger.Println(p.shared.self.ID, "-", "Plumtree initialized", "peers", p.peers)
-	go p.cleanUp()
+	// go p.cleanUp()
 	return p
 }
 
