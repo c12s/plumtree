@@ -101,7 +101,7 @@ func (p *Plumtree) cleanUp() {
 			// p.shared.logger.Println(id)
 			// p.shared.logger.Println(len(tree.receivedMsgs))
 			// p.shared.logger.Println(tree.lastMsg)
-			if len(tree.receivedMsgs) > 0 && tree.lastMsg+30 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
+			if len(tree.receivedMsgs) > 0 && tree.lastMsg+60 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
 				removeIds = append(removeIds, id)
 			}
 		}
