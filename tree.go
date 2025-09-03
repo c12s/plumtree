@@ -32,9 +32,10 @@ type Tree struct {
 	lazyPushPeers  []hyparview.Peer
 	receivedMsgs   []PlumtreeCustomMessage
 	missingMsgs    map[string][]hyparview.Peer
-	forgottenMsgs  map[string]struct{}
+	forgottenMsgs  map[string]bool
 	// lazyQueue      map[string][]PlumtreeCustomMessage
-	timers map[string][]chan struct{}
+	// timers  map[string][]chan struct{}
+	timers2 map[string]struct{}
 	// stopCh         chan struct{}
 	lock      *sync.Mutex
 	destroyed bool
@@ -50,9 +51,10 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		lazyPushPeers:  make([]hyparview.Peer, 0),
 		receivedMsgs:   make([]PlumtreeCustomMessage, 0),
 		missingMsgs:    make(map[string][]hyparview.Peer),
-		forgottenMsgs:  make(map[string]struct{}),
+		forgottenMsgs:  make(map[string]bool),
 		// lazyQueue:      make(map[string][]PlumtreeCustomMessage),
-		timers: make(map[string][]chan struct{}),
+		// timers:  make(map[string][]chan struct{}),
+		timers2: make(map[string]struct{}),
 		// stopCh:         make(chan struct{}),
 		lock:      lock,
 		destroyed: false,
