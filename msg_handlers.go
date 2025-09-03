@@ -272,9 +272,9 @@ func (p *Tree) setTimer(msgId []byte) {
 func (p *Tree) stopTimers(msgId []byte) {
 	if timers, ok := p.timers[string(msgId)]; ok {
 		for _, timer := range timers {
-			go func() {
-				timer <- struct{}{}
-			}()
+			// go func() {
+			timer <- struct{}{}
+			// }()
 		}
 	}
 }
