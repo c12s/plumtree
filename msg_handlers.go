@@ -227,7 +227,7 @@ func (p *Tree) onForget(msg PlumtreeForgetMessage, sender hyparview.Peer) {
 func (p *Tree) setTimer(msgId []byte) {
 	go func() {
 		p.shared.logger.Println(p.shared.self.ID, "-", "started timer for msg", msgId)
-		quitCh := make(chan struct{})
+		quitCh := make(chan struct{}, 1)
 		// p.shared.logger.Println("try lock")
 		p.lock.Lock()
 		p.timers[string(msgId)] = append(p.timers[string(msgId)], quitCh)
