@@ -33,10 +33,7 @@ type Tree struct {
 	receivedMsgs   []PlumtreeCustomMessage
 	missingMsgs    map[string][]hyparview.Peer
 	forgottenMsgs  map[string]bool
-	// lazyQueue      map[string][]PlumtreeCustomMessage
-	// timers  map[string][]chan struct{}
-	timers2 map[string]struct{}
-	// stopCh         chan struct{}
+	timers map[string]struct{}
 	lock      *sync.Mutex
 	destroyed bool
 	lastMsg   int64
@@ -52,10 +49,7 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		receivedMsgs:   make([]PlumtreeCustomMessage, 0),
 		missingMsgs:    make(map[string][]hyparview.Peer),
 		forgottenMsgs:  make(map[string]bool),
-		// lazyQueue:      make(map[string][]PlumtreeCustomMessage),
-		// timers:  make(map[string][]chan struct{}),
-		timers2: make(map[string]struct{}),
-		// stopCh:         make(chan struct{}),
+		timers: make(map[string]struct{}),
 		lock:      lock,
 		destroyed: false,
 	}
