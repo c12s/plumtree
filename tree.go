@@ -11,6 +11,15 @@ import (
 	"github.com/c12s/hyparview/transport"
 )
 
+type msgRcvd struct {
+	time time.Time
+}
+
+type ptRcvd struct {
+	msgRcvd
+	msg PlumtreeCustomMessage
+}
+
 type TreeMetadata struct {
 	Id    string
 	Score int
@@ -30,13 +39,13 @@ type Tree struct {
 	parent         *hyparview.Peer
 	eagerPushPeers []hyparview.Peer
 	lazyPushPeers  []hyparview.Peer
-	receivedMsgs   []PlumtreeCustomMessage
+	receivedMsgs   []ptRcvd
 	missingMsgs    map[string][]hyparview.Peer
-	forgottenMsgs  map[string]bool
-	timers map[string]struct{}
-	lock      *sync.Mutex
-	destroyed bool
-	lastMsg   int64
+	forgottenMsgs  map[string]msgRcvd
+	timers         map[string]struct{}
+	lock           *sync.Mutex
+	destroyed      bool
+	lastMsg        int64
 }
 
 func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer, lock *sync.Mutex) *Tree {
@@ -46,12 +55,12 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		parent:         nil,
 		eagerPushPeers: peers,
 		lazyPushPeers:  make([]hyparview.Peer, 0),
-		receivedMsgs:   make([]PlumtreeCustomMessage, 0),
+		receivedMsgs:   make([]ptRcvd, 0),
 		missingMsgs:    make(map[string][]hyparview.Peer),
-		forgottenMsgs:  make(map[string]bool),
-		timers: make(map[string]struct{}),
-		lock:      lock,
-		destroyed: false,
+		forgottenMsgs:  make(map[string]msgRcvd),
+		timers:         make(map[string]struct{}),
+		lock:           lock,
+		destroyed:      false,
 	}
 	// go t.sendAnnouncements()
 	return t
@@ -65,7 +74,7 @@ func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, hyparview.Peer{Node: t.shared.self})
 	// t.shared.logger.Println("try lock")
 	t.lock.Lock()
-	t.receivedMsgs = append(t.receivedMsgs, msg)
+	t.receivedMsgs = append(t.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now()}, msg: msg})
 	msg.Round++
 	t.eagerPush(msg, t.shared.self)
 	t.lazyPush(msg, t.shared.self)

@@ -103,6 +103,23 @@ func (p *Plumtree) cleanUp() {
 			// p.shared.logger.Println(tree.lastMsg)
 			if len(tree.receivedMsgs) > 0 && tree.lastMsg+60 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
 				removeIds = append(removeIds, id)
+			} else {
+				remove := []string{}
+				for id, t := range tree.forgottenMsgs {
+					if t.time.Add(30 * time.Second).Before(time.Now()) {
+						remove = append(remove, id)
+					}
+				}
+				for _, id := range remove {
+					delete(tree.forgottenMsgs, id)
+				}
+				filtered := []ptRcvd{}
+				for _, msg := range tree.receivedMsgs {
+					if msg.time.Add(30 * time.Second).After(time.Now()) {
+						filtered = append(filtered, msg)
+					}
+				}
+				tree.receivedMsgs = filtered
 			}
 		}
 		// p.shared.logger.Println(removeIds)

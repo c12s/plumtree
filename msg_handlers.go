@@ -110,14 +110,14 @@ func (p *Plumtree) onGraft(msgBytes []byte, sender hyparview.Peer) {
 // locker by caller
 func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	p.shared.logger.Println(p.shared.self.ID, "-", "Processing gossip message")
-	if !slices.ContainsFunc(p.receivedMsgs, func(received PlumtreeCustomMessage) bool {
-		return bytes.Equal(msg.MsgId, received.MsgId)
+	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
+		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
 		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
 		p.lastMsg = time.Now().Unix()
 		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 		p.parent = &sender
-		p.receivedMsgs = append(p.receivedMsgs, msg)
+		p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now()}, msg: msg})
 		p.lock.Unlock()
 		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
 		p.lock.Lock()
@@ -160,8 +160,8 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 	p.lastMsg = time.Now().Unix()
 	for _, msgId := range msg.MsgIds {
-		if slices.ContainsFunc(p.receivedMsgs, func(received PlumtreeCustomMessage) bool {
-			return bytes.Equal([]byte(received.MsgId), msgId)
+		if slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
+			return bytes.Equal([]byte(received.msg.MsgId), msgId)
 		}) {
 			continue
 		}
@@ -184,8 +184,8 @@ func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
-	msgIndex := slices.IndexFunc(p.receivedMsgs, func(received PlumtreeCustomMessage) bool {
-		return bytes.Equal(received.MsgId, msg.MsgId)
+	msgIndex := slices.IndexFunc(p.receivedMsgs, func(received ptRcvd) bool {
+		return bytes.Equal(received.msg.MsgId, msg.MsgId)
 	})
 	if msgIndex < 0 {
 		p.shared.logger.Println("could not find in received msgs a missing msg ID", msg.MsgId, "received", p.receivedMsgs)
@@ -206,17 +206,21 @@ func (p *Tree) onForget(msg PlumtreeForgetMessage, sender hyparview.Peer) {
 		p.shared.logger.Println("already forgot msg with id", msg.MsgId)
 		return
 	}
-	p.forgottenMsgs[string(msg.MsgId)] = true
+	p.forgottenMsgs[string(msg.MsgId)] = msgRcvd{time: time.Now()}
 	p.forget(msg.MsgId, sender)
 }
 
 func (p *Tree) setTimer(msgId []byte) {
 	p.shared.logger.Println(p.shared.self.ID, "-", "started timer for msg", msgId)
 	time.Sleep(time.Duration(p.shared.config.MissingMsgTimeout) * time.Second)
-	for !slices.ContainsFunc(p.receivedMsgs, func(msg PlumtreeCustomMessage) bool {
-		return bytes.Equal(msg.MsgId, msgId)
-	}) && !p.forgottenMsgs[string(msgId)] {
+	for !slices.ContainsFunc(p.receivedMsgs, func(msg ptRcvd) bool {
+		return bytes.Equal(msg.msg.MsgId, msgId)
+	}) {
 		p.lock.Lock()
+		if _, ok := p.forgottenMsgs[string(msgId)]; ok {
+			p.lock.Unlock()
+			break
+		}
 		if len(p.missingMsgs[string(msgId)]) == 0 {
 			p.lock.Unlock()
 			p.shared.logger.Println("no peers to receive missing msg from", msgId)
