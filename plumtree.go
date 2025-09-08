@@ -94,13 +94,10 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 
 func (p *Plumtree) cleanUp() {
 	for range time.NewTicker(1 * time.Second).C {
-		// p.shared.logger.Println("clean up trees")
 		removeIds := []string{}
 		p.lock.Lock()
 		for id, tree := range p.trees {
-			// p.shared.logger.Println(id)
-			// p.shared.logger.Println(len(tree.receivedMsgs))
-			// p.shared.logger.Println(tree.lastMsg)
+			// todo: ovo nema smisla
 			if len(tree.receivedMsgs) > 0 && tree.lastMsg+60 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
 				removeIds = append(removeIds, id)
 			} else {
@@ -122,7 +119,6 @@ func (p *Plumtree) cleanUp() {
 				tree.receivedMsgs = filtered
 			}
 		}
-		// p.shared.logger.Println(removeIds)
 		for _, id := range removeIds {
 			delete(p.trees, id)
 		}
