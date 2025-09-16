@@ -42,6 +42,7 @@ type Tree struct {
 	receivedMsgs   []ptRcvd
 	missingMsgs    map[string][]hyparview.Peer
 	forgottenMsgs  map[string]msgRcvd
+	lazyQueue      map[string][]PlumtreeCustomMessage
 	timers         map[string]struct{}
 	lock           *sync.Mutex
 	destroyed      bool
@@ -58,11 +59,12 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		receivedMsgs:   make([]ptRcvd, 0),
 		missingMsgs:    make(map[string][]hyparview.Peer),
 		forgottenMsgs:  make(map[string]msgRcvd),
+		lazyQueue:      make(map[string][]PlumtreeCustomMessage),
 		timers:         make(map[string]struct{}),
 		lock:           lock,
 		destroyed:      false,
 	}
-	// go t.sendAnnouncements()
+	go t.sendAnnouncements()
 	return t
 }
 
@@ -123,7 +125,7 @@ func (t *Tree) eagerPush(payload PlumtreeCustomMessage, sender data.Node) {
 // locked by caller
 func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 	t.shared.logger.Println(t.shared.self.ID, "-", "Lazy push - sending")
-	removePeers := make([]hyparview.Peer, 0)
+	// removePeers := make([]hyparview.Peer, 0)
 	for _, peer := range t.lazyPushPeers {
 		// if i >= t.shared.config.Fanout-1 {
 		// 	break
@@ -132,75 +134,122 @@ func (t *Tree) lazyPush(msg PlumtreeCustomMessage, sender data.Node) {
 		if sender.ID == peer.Node.ID || peer.Conn == nil {
 			continue
 		}
-		ihaveMsg := PlumtreeIHaveMessage{
-			Metadata: t.metadata,
-			MsgIds:   [][]byte{msg.MsgId},
-		}
-		t.shared.logger.Printf("%s - Sending ihave msg to peer: %v\n", t.shared.self.ID, peer.Node.ID)
-		err := send(ihaveMsg, IHAVE_MSG_TYPE, peer.Conn)
-		if err != nil {
-			removePeers = append(removePeers, peer)
-			t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
-		}
-		// t.lazyQueue[peer.Node.ID] = append(t.lazyQueue[peer.Node.ID], msg)
+		// ihaveMsg := PlumtreeIHaveMessage{
+		// 	Metadata: t.metadata,
+		// 	MsgIds:   [][]byte{msg.MsgId},
+		// }
+		// t.shared.logger.Printf("%s - Sending ihave msg to peer: %v\n", t.shared.self.ID, peer.Node.ID)
+		// err := send(ihaveMsg, IHAVE_MSG_TYPE, peer.Conn)
+		// if err != nil {
+		// 	removePeers = append(removePeers, peer)
+		// 	t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
+		// }
+		t.lazyQueue[peer.Node.ID] = append(t.lazyQueue[peer.Node.ID], msg)
 		t.shared.logger.Printf("%s - Added message to lazy queue for peer: %v\n", t.shared.self.ID, peer.Node.ID)
 	}
-	for _, r := range removePeers {
-		t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
-			return r.Node.ID == p.Node.ID
-		})
-		t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
-			return r.Node.ID == p.Node.ID
-		})
-	}
+	// for _, r := range removePeers {
+	// 	t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
+	// 		return r.Node.ID == p.Node.ID
+	// 	})
+	// 	t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
+	// 		return r.Node.ID == p.Node.ID
+	// 	})
+	// }
 }
 
 // locked
-// func (t *Tree) sendAnnouncements() {
-// 	t.shared.logger.Println(t.shared.self.ID, "-", "Starting to send announcements periodically")
-// 	ticker := time.NewTicker(time.Duration(t.shared.config.AnnounceInterval) * time.Second)
-// 	for {
-// 		select {
-// 		case <-ticker.C:
-// 			t.shared.logger.Println("try lock")
-// 			t.lock.Lock()
-// 			t.shared.logger.Println(t.shared.self.ID, "-", "Sending announcements")
-// 			for nodeId, messages := range t.lazyQueue {
-// 				ihaveMsg := PlumtreeIHaveMessage{
-// 					Metadata: t.metadata,
-// 					MsgIds:   make([][]byte, 0),
-// 				}
-// 				for _, msg := range messages {
-// 					ihaveMsg.MsgIds = append(ihaveMsg.MsgIds, msg.MsgId)
-// 				}
-// 				if len(ihaveMsg.MsgIds) == 0 {
-// 					t.shared.logger.Println(t.shared.self.ID, "-", "No messages to send IHave")
-// 					continue
-// 				}
-// 				var receiver *hyparview.Peer = nil
-// 				for _, peer := range t.lazyPushPeers {
-// 					if peer.Node.ID != nodeId || peer.Conn == nil {
-// 						continue
-// 					}
-// 					receiver = &peer
-// 					break
-// 				}
-// 				if receiver != nil {
-// 					err := send(ihaveMsg, IHAVE_MSG_TYPE, receiver.Conn)
-// 					if err != nil {
-// 						t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
-// 					}
-// 				}
-// 				t.lazyQueue[nodeId] = []PlumtreeCustomMessage{}
-// 			}
-// 			t.lock.Unlock()
-// 			t.shared.logger.Println(t.shared.self.ID, "-", "Announcements sent")
-// 		case <-t.stopCh:
-// 			t.shared.logger.Println(t.shared.self.ID, "received signal to stop sending announcements")
-// 			return
-// 		}
-// 	}
-// }
+func (t *Tree) sendAnnouncements() {
+	t.shared.logger.Println(t.shared.self.ID, "-", "Starting to send announcements periodically")
+	ticker := time.NewTicker(time.Duration(t.shared.config.AnnounceInterval) * time.Second)
+	for range ticker.C {
+		t.lock.Lock()
+		if t.destroyed {
+			t.lock.Unlock()
+			continue
+		}
+		removePeers := make([]hyparview.Peer, 0)
+		t.shared.logger.Println(t.shared.self.ID, "-", "Sending announcements")
+		for nodeId, messages := range t.lazyQueue {
+			ihaveMsg := PlumtreeIHaveMessage{
+				Metadata: t.metadata,
+				MsgIds:   make([][]byte, 0),
+			}
+			for _, msg := range messages {
+				ihaveMsg.MsgIds = append(ihaveMsg.MsgIds, msg.MsgId)
+			}
+			if len(ihaveMsg.MsgIds) == 0 {
+				t.shared.logger.Println(t.shared.self.ID, "-", "No messages to send IHave")
+				continue
+			}
+			var receiver *hyparview.Peer = nil
+			for _, peer := range t.lazyPushPeers {
+				if peer.Node.ID != nodeId || peer.Conn == nil {
+					continue
+				}
+				receiver = &peer
+				break
+			}
+			if receiver != nil {
+				err := send(ihaveMsg, IHAVE_MSG_TYPE, receiver.Conn)
+				if err != nil {
+					removePeers = append(removePeers, *receiver)
+					t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
+				}
+			}
+			t.lazyQueue[nodeId] = []PlumtreeCustomMessage{}
+		}
+		for _, r := range removePeers {
+			t.lazyPushPeers = slices.DeleteFunc(t.lazyPushPeers, func(p hyparview.Peer) bool {
+				return r.Node.ID == p.Node.ID
+			})
+			t.eagerPushPeers = slices.DeleteFunc(t.eagerPushPeers, func(p hyparview.Peer) bool {
+				return r.Node.ID == p.Node.ID
+			})
+		}
+		t.lock.Unlock()
+		t.shared.logger.Println(t.shared.self.ID, "-", "Announcements sent")
+	}
+	// for {
+	// 	select {
+	// 	case <-ticker.C:
+	// 		t.lock.Lock()
+	// 		t.shared.logger.Println(t.shared.self.ID, "-", "Sending announcements")
+	// 		for nodeId, messages := range t.lazyQueue {
+	// 			ihaveMsg := PlumtreeIHaveMessage{
+	// 				Metadata: t.metadata,
+	// 				MsgIds:   make([][]byte, 0),
+	// 			}
+	// 			for _, msg := range messages {
+	// 				ihaveMsg.MsgIds = append(ihaveMsg.MsgIds, msg.MsgId)
+	// 			}
+	// 			if len(ihaveMsg.MsgIds) == 0 {
+	// 				t.shared.logger.Println(t.shared.self.ID, "-", "No messages to send IHave")
+	// 				continue
+	// 			}
+	// 			var receiver *hyparview.Peer = nil
+	// 			for _, peer := range t.lazyPushPeers {
+	// 				if peer.Node.ID != nodeId || peer.Conn == nil {
+	// 					continue
+	// 				}
+	// 				receiver = &peer
+	// 				break
+	// 			}
+	// 			if receiver != nil {
+	// 				err := send(ihaveMsg, IHAVE_MSG_TYPE, receiver.Conn)
+	// 				if err != nil {
+	// 					t.shared.logger.Println(t.shared.self.ID, "-", "Error sending IHave message to peer:", err)
+	// 				}
+	// 			}
+	// 			t.lazyQueue[nodeId] = []PlumtreeCustomMessage{}
+	// 		}
+	// 		t.lock.Unlock()
+	// 		t.shared.logger.Println(t.shared.self.ID, "-", "Announcements sent")
+	// 	case <-t.stopCh:
+	// 		t.shared.logger.Println(t.shared.self.ID, "received signal to stop sending announcements")
+	// 		return
+	// 	}
+	// }
+}
 
 // locked by caller
 func (t *Tree) onPeerUp(peer hyparview.Peer) {
