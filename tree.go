@@ -12,7 +12,9 @@ import (
 )
 
 type msgRcvd struct {
-	time time.Time
+	time  time.Time
+	from  string
+	msgId string
 }
 
 type ptRcvd struct {
@@ -47,6 +49,8 @@ type Tree struct {
 	lock           *sync.Mutex
 	destroyed      bool
 	lastMsg        int64
+	rcvdAll        []msgRcvd
+	ihaveAll       []msgRcvd
 }
 
 func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer, lock *sync.Mutex) *Tree {
@@ -63,6 +67,8 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		timers:         make(map[string]struct{}),
 		lock:           lock,
 		destroyed:      false,
+		rcvdAll:        make([]msgRcvd, 0),
+		ihaveAll:       make([]msgRcvd, 0),
 	}
 	go t.sendAnnouncements()
 	return t
@@ -76,7 +82,7 @@ func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, hyparview.Peer{Node: t.shared.self})
 	// t.shared.logger.Println("try lock")
 	t.lock.Lock()
-	t.receivedMsgs = append(t.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now()}, msg: msg})
+	t.receivedMsgs = append(t.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: t.shared.self.ID, msgId: msg.Metadata.Id}, msg: msg})
 	msg.Round++
 	t.eagerPush(msg, t.shared.self)
 	t.lazyPush(msg, t.shared.self)
@@ -309,4 +315,87 @@ func (t *Tree) forget(msgId []byte, sender hyparview.Peer) {
 			return r.Node.ID == p.Node.ID
 		})
 	}
+}
+
+// locked by caller
+func (t *Tree) bestFitForEagerPeer(candidates []hyparview.Peer) *hyparview.Peer {
+	// 1. Group recent messages by peer
+	ihaveByPeer := make(map[string][]msgRcvd)
+	for _, msg := range t.ihaveAll {
+		if msg.time.Add(60 * time.Second).Before(time.Now()) {
+			continue
+		}
+		if !slices.ContainsFunc(candidates, func(p hyparview.Peer) bool {
+			return p.Node.ID == msg.from
+		}) {
+			continue
+		}
+		ihaveByPeer[msg.from] = append(ihaveByPeer[msg.from], msg)
+	}
+
+	// 2. Select peers with the maximum number of messages
+	maxPeers := make([]string, 0)
+	maxCount := 0
+	for peer, msgs := range ihaveByPeer {
+		if len(msgs) > maxCount {
+			maxCount = len(msgs)
+			maxPeers = []string{peer}
+		} else if len(msgs) == maxCount {
+			maxPeers = append(maxPeers, peer)
+		}
+	}
+	if len(maxPeers) == 0 {
+		return nil
+	}
+
+	// 3. Build map[msgId][]msgRcvd for selected peers
+	msgsByID := make(map[string][]msgRcvd)
+	for _, peer := range maxPeers {
+		for _, msg := range ihaveByPeer[peer] {
+			msgsByID[msg.msgId] = append(msgsByID[msg.msgId], msg)
+		}
+	}
+
+	// 4. Compute per-peer latency totals
+	latencySum := make(map[string]time.Duration)
+	latencyCount := make(map[string]int)
+
+	for _, msgs := range msgsByID {
+		// find first arrival for this msgId
+		firstArrival := msgs[0].time
+		for _, m := range msgs[1:] {
+			if m.time.Before(firstArrival) {
+				firstArrival = m.time
+			}
+		}
+		// compute latency for each peer that received this msg
+		for _, m := range msgs {
+			lat := m.time.Sub(firstArrival)
+			latencySum[m.from] += lat
+			latencyCount[m.from]++
+		}
+	}
+
+	// 5. Compute average latency per peer and find the best (lowest)
+	bestPeer := ""
+	bestAvg := time.Duration(1<<63 - 1) // max int64
+
+	for _, peer := range maxPeers {
+		if latencyCount[peer] == 0 {
+			continue
+		}
+		avg := latencySum[peer] / time.Duration(latencyCount[peer])
+		if avg < bestAvg {
+			bestAvg = avg
+			bestPeer = peer
+		}
+	}
+
+	// 6. Return matching hyparview.Peer
+	for _, p := range candidates {
+		if p.Node.ID == bestPeer {
+			return &p
+		}
+	}
+	return nil
 }
