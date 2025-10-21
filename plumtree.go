@@ -103,7 +103,7 @@ func (p *Plumtree) cleanUp() {
 			} else {
 				remove := []string{}
 				for id, t := range tree.forgottenMsgs {
-					if t.time.Add(15 * time.Second).Before(time.Now()) {
+					if t.time.Add(60 * time.Second).Before(time.Now()) {
 						remove = append(remove, id)
 					}
 				}
@@ -112,7 +112,7 @@ func (p *Plumtree) cleanUp() {
 				}
 				filtered := []ptRcvd{}
 				for _, msg := range tree.receivedMsgs {
-					if msg.time.Add(10 * time.Second).After(time.Now()) {
+					if msg.time.Add(60 * time.Second).After(time.Now()) {
 						filtered = append(filtered, msg)
 					}
 				}
