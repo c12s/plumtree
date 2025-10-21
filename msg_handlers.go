@@ -115,6 +115,12 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	}) {
 		if p.parent != nil {
 			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "but already has parent", p.parent.Node.ID)
+			move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
+			pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
+			err := send(pruneMsg, PRUNE_MSG_TYPE, sender.Conn)
+			if err != nil {
+				p.shared.logger.Println(p.shared.self.ID, "-", "Error sending prune message:", err)
+			}
 		} else {
 			p.rcvdAll = append(p.rcvdAll, msgRcvd{
 				time:  time.Now(),
