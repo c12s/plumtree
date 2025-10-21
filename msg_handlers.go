@@ -116,7 +116,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		id, ok := p.activeGraft[msg.Metadata.Id]
 		isAG := ok && id == sender.Node.ID
 		isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
-		if !isAG && !isParent {
+		if !isAG && !isParent && p.parent != nil {
 			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time from", sender.Node.ID, "but have active graft from", id)
 			// treat it as i have
 			p.missingMsgs[string(msg.MsgId)] = append(p.missingMsgs[string(msg.MsgId)], sender)
