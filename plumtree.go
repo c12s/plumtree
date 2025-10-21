@@ -222,7 +222,7 @@ func (p *Plumtree) SendDirectMsg(treeId string, msgType string, msg []byte, to t
 	if tree, ok := p.trees[treeId]; !ok || tree == nil || tree.destroyed {
 		return fmt.Errorf("no tree with id=%s found", treeId)
 	} else {
-		p.shared.logger.Println(p.shared.self.ID, "-", "send to parent id=", tree.parent.Node.ID)
+		// p.shared.logger.Println(p.shared.self.ID, "-", "send to parent id=", tree.parent.Node.ID)
 		err := p.sendDirectMsg(treeId, msgType, msg, to)
 		if err != nil {
 			return fmt.Errorf("error sending %s: %v", msgType, err)
