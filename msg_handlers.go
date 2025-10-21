@@ -270,7 +270,7 @@ func (p *Tree) setTimer(msgId []byte) {
 		// add to active graft
 		p.activeGraft[string(msgId)] = best.Node.ID
 		p.lock.Unlock()
-		time.Sleep(time.Duration(5 * time.Second))
+		time.Sleep(time.Duration(10 * time.Second))
 		// remove from active graft
 		p.lock.Lock()
 		delete(p.activeGraft, string(msgId))
