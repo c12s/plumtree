@@ -113,13 +113,14 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
-		if p.parent != nil && sender.Node.ID != p.parent.Node.ID {
-			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "but already has parent", p.parent.Node.ID)
-			move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
-			pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
-			err := send(pruneMsg, PRUNE_MSG_TYPE, sender.Conn)
-			if err != nil {
-				p.shared.logger.Println(p.shared.self.ID, "-", "Error sending prune message:", err)
+		// if has active graft but from another, ignore
+		if id, ok := p.activeGraft[msg.Metadata.Id]; ok && id != sender.Node.ID {
+			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time from", sender.Node.ID, "but have active graft from", id)
+			// treat it as i have
+			p.missingMsgs[string(msg.MsgId)] = append(p.missingMsgs[string(msg.MsgId)], sender)
+			if _, ok := p.timers[string(msg.MsgId)]; !ok {
+				p.timers[string(msg.MsgId)] = struct{}{}
+				go p.setTimer(msg.MsgId)
 			}
 		} else {
 			p.rcvdAll = append(p.rcvdAll, msgRcvd{
@@ -147,9 +148,6 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)
 		move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 		pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
-		if p.parent != nil && sender.Node.ID == p.parent.Node.ID {
-			p.parent = nil
-		}
 		err := send(pruneMsg, PRUNE_MSG_TYPE, sender.Conn)
 		if err != nil {
 			p.shared.logger.Println(p.shared.self.ID, "-", "Error sending prune message:", err)
@@ -168,9 +166,6 @@ func (p *Tree) onPrune(_ PlumtreePruneMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing prune message from peer: %v\n", p.shared.self.ID, sender.Node.ID)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
-	if p.parent != nil && sender.Node.ID == p.parent.Node.ID {
-		p.parent = nil
-	}
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 }
 
@@ -272,8 +267,14 @@ func (p *Tree) setTimer(msgId []byte) {
 		if err != nil {
 			p.shared.logger.Println(p.shared.self.ID, "-", "Error sending graft message:", err)
 		}
+		// add to active graft
+		p.activeGraft[string(msgId)] = best.Node.ID
 		p.lock.Unlock()
 		time.Sleep(time.Duration(1 * time.Second))
+		// remove from active graft
+		p.lock.Lock()
+		delete(p.activeGraft, string(msgId))
+		p.lock.Unlock()
 	}
 	p.lock.Lock()
 	delete(p.timers, string(msgId))

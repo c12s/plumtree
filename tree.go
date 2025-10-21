@@ -51,6 +51,7 @@ type Tree struct {
 	lastMsg        int64
 	rcvdAll        []msgRcvd
 	ihaveAll       []msgRcvd
+	activeGraft    map[string]string
 }
 
 func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer, lock *sync.Mutex) *Tree {
@@ -69,6 +70,7 @@ func NewTree(shared *sharedConfig, metadata TreeMetadata, peers []hyparview.Peer
 		destroyed:      false,
 		rcvdAll:        make([]msgRcvd, 0),
 		ihaveAll:       make([]msgRcvd, 0),
+		activeGraft:    make(map[string]string),
 	}
 	go t.sendAnnouncements()
 	return t
