@@ -84,7 +84,7 @@ func (t *Tree) Broadcast(msg PlumtreeCustomMessage) error {
 	t.shared.gossipMsgHandler(t.metadata, msg.MsgType, msg.Msg, hyparview.Peer{Node: t.shared.self})
 	// t.shared.logger.Println("try lock")
 	t.lock.Lock()
-	t.receivedMsgs = append(t.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: t.shared.self.ID, msgId: msg.Metadata.Id}, msg: msg})
+	t.receivedMsgs = append(t.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: t.shared.self.ID, msgId: string(msg.MsgId)}, msg: msg})
 	msg.Round++
 	t.eagerPush(msg, t.shared.self)
 	t.lazyPush(msg, t.shared.self)

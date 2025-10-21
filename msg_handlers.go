@@ -3,6 +3,7 @@ package plumtree
 import (
 	"bytes"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/c12s/hyparview/hyparview"
@@ -112,7 +113,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	p.shared.logger.Println(p.shared.self.ID, "-", "Processing gossip message")
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
-	}) {
+	}) && !strings.HasSuffix(p.metadata.Id, p.metadata.NodeID()) {
 		// id, ok := p.activeGraft[msg.Metadata.Id]
 		// isAG := ok && id == sender.Node.ID
 		// isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
@@ -128,13 +129,13 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		p.rcvdAll = append(p.rcvdAll, msgRcvd{
 			time:  time.Now(),
 			from:  sender.Node.ID,
-			msgId: msg.Metadata.Id,
+			msgId: string(msg.MsgId),
 		})
 		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
 		p.lastMsg = time.Now().Unix()
 		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 		p.parent = &sender
-		p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}, msg: msg})
+		p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: string(msg.MsgId)}, msg: msg})
 		p.lock.Unlock()
 		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
 		p.lock.Lock()
@@ -234,7 +235,7 @@ func (p *Tree) onForget(msg PlumtreeForgetMessage, sender hyparview.Peer) {
 		p.shared.logger.Println("already forgot msg with id", msg.MsgId)
 		return
 	}
-	p.forgottenMsgs[string(msg.MsgId)] = msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}
+	p.forgottenMsgs[string(msg.MsgId)] = msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: string(msg.MsgId)}
 	p.forget(msg.MsgId, sender)
 }
 
