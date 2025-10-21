@@ -113,8 +113,10 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
-		// if has active graft but from another, ignore
-		if id, ok := p.activeGraft[msg.Metadata.Id]; ok && id != sender.Node.ID {
+		id, ok := p.activeGraft[msg.Metadata.Id]
+		isAG := ok && id == sender.Node.ID
+		isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
+		if !isAG && !isParent {
 			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time from", sender.Node.ID, "but have active graft from", id)
 			// treat it as i have
 			p.missingMsgs[string(msg.MsgId)] = append(p.missingMsgs[string(msg.MsgId)], sender)
@@ -166,6 +168,9 @@ func (p *Tree) onPrune(_ PlumtreePruneMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing prune message from peer: %v\n", p.shared.self.ID, sender.Node.ID)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
+	if p.parent != nil && p.parent.Node.ID == sender.Node.ID {
+		p.parent = nil
+	}
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 }
 
