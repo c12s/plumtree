@@ -48,7 +48,7 @@ func TestTreeConstruction(t *testing.T) {
 			ID:            nodeID,
 			ListenAddress: listenAddress,
 		}
-		connManager := transport.NewConnManager(transport.NewTCPConn, transport.AcceptTcpConnsFn(self.ListenAddress))
+		connManager := transport.NewConnManager(false, transport.NewTCPConn, transport.AcceptTcpConnsFn(self.ListenAddress, false))
 		hvLogFile, err := os.Create(fmt.Sprintf("log/hv_%s.log", nodeID))
 		if err != nil {
 			log.Fatalf("error opening file: %v", err)
