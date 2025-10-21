@@ -113,25 +113,29 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
-		p.rcvdAll = append(p.rcvdAll, msgRcvd{
-			time:  time.Now(),
-			from:  sender.Node.ID,
-			msgId: msg.Metadata.Id,
-		})
-		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
-		p.lastMsg = time.Now().Unix()
-		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
-		p.parent = &sender
-		p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}, msg: msg})
-		p.lock.Unlock()
-		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
-		p.lock.Lock()
-		if !proceed {
-			p.forget(msg.MsgId, sender)
+		if p.parent != nil {
+			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "but already has parent", p.parent.Node.ID)
 		} else {
-			msg.Round++
-			p.eagerPush(msg, sender.Node)
-			p.lazyPush(msg, sender.Node)
+			p.rcvdAll = append(p.rcvdAll, msgRcvd{
+				time:  time.Now(),
+				from:  sender.Node.ID,
+				msgId: msg.Metadata.Id,
+			})
+			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
+			p.lastMsg = time.Now().Unix()
+			move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
+			p.parent = &sender
+			p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}, msg: msg})
+			p.lock.Unlock()
+			proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
+			p.lock.Lock()
+			if !proceed {
+				p.forget(msg.MsgId, sender)
+			} else {
+				msg.Round++
+				p.eagerPush(msg, sender.Node)
+				p.lazyPush(msg, sender.Node)
+			}
 		}
 	} else {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)

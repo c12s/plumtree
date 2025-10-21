@@ -286,6 +286,9 @@ func (t *Tree) onPeerDown(peer hyparview.Peer) {
 			return p.Node.ID == peer.Node.ID
 		})
 	}
+	if t.parent != nil && peer.Node.ID == t.parent.Node.ID {
+		t.parent = nil
+	}
 	// delete(t.lazyQueue, peer.Node.ID)
 }
 
