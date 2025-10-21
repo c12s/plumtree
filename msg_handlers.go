@@ -205,7 +205,6 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing graft message from peer: %v message ID %v\n", p.shared.self.ID, sender.Node.ID, msg.MsgId)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
-	move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	msgIndex := slices.IndexFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(received.msg.MsgId, msg.MsgId)
@@ -214,6 +213,7 @@ func (p *Tree) onGraft(msg PlumtreeGraftMessage, sender hyparview.Peer) {
 		p.shared.logger.Println("could not find in received msgs a missing msg ID", msg.MsgId, "received", p.receivedMsgs)
 		return
 	}
+	move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
 	missing := p.receivedMsgs[msgIndex]
 	err := send(missing, GOSSIP_MSG_TYPE, sender.Conn)
 	if err != nil {
@@ -270,7 +270,7 @@ func (p *Tree) setTimer(msgId []byte) {
 		// add to active graft
 		p.activeGraft[string(msgId)] = best.Node.ID
 		p.lock.Unlock()
-		time.Sleep(time.Duration(10 * time.Second))
+		time.Sleep(time.Duration(1 * time.Second))
 		// remove from active graft
 		p.lock.Lock()
 		delete(p.activeGraft, string(msgId))
