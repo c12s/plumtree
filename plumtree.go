@@ -5,7 +5,6 @@ import (
 	"log"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/c12s/hyparview/data"
 	"github.com/c12s/hyparview/hyparview"
@@ -88,43 +87,43 @@ func NewPlumtree(config Config, protocol MembershipProtocol, logger *log.Logger)
 	p.Protocol.OnPeerUp(p.onPeerUp)
 	p.Protocol.OnPeerDown(p.onPeerDown)
 	p.shared.logger.Println(p.shared.self.ID, "-", "Plumtree initialized", "peers", p.peers)
-	go p.cleanUp()
+	// go p.cleanUp()
 	return p
 }
 
-func (p *Plumtree) cleanUp() {
-	for range time.NewTicker(1 * time.Second).C {
-		removeIds := []string{}
-		p.lock.Lock()
-		for id, tree := range p.trees {
-			// todo: ovo nema smisla
-			if len(tree.receivedMsgs) > 0 && tree.lastMsg+60 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
-				removeIds = append(removeIds, id)
-			} else {
-				// remove := []string{}
-				// for id, t := range tree.forgottenMsgs {
-				// 	if t.time.Add(60 * time.Second).Before(time.Now()) {
-				// 		remove = append(remove, id)
-				// 	}
-				// }
-				// for _, id := range remove {
-				// 	delete(tree.forgottenMsgs, id)
-				// }
-				// filtered := []ptRcvd{}
-				// for _, msg := range tree.receivedMsgs {
-				// 	if msg.time.Add(60 * time.Second).After(time.Now()) {
-				// 		filtered = append(filtered, msg)
-				// 	}
-				// }
-				// tree.receivedMsgs = filtered
-			}
-		}
-		for _, id := range removeIds {
-			delete(p.trees, id)
-		}
-		p.lock.Unlock()
-	}
-}
+// func (p *Plumtree) cleanUp() {
+// 	for range time.NewTicker(1 * time.Second).C {
+// 		removeIds := []string{}
+// 		p.lock.Lock()
+// 		for id, tree := range p.trees {
+// 			// todo: ovo nema smisla
+// 			if len(tree.receivedMsgs) > 0 && tree.lastMsg+60 < time.Now().Unix() && tree.metadata.NodeID() != p.Protocol.Self().ID {
+// 				removeIds = append(removeIds, id)
+// 			} else {
+// 				// remove := []string{}
+// 				// for id, t := range tree.forgottenMsgs {
+// 				// 	if t.time.Add(60 * time.Second).Before(time.Now()) {
+// 				// 		remove = append(remove, id)
+// 				// 	}
+// 				// }
+// 				// for _, id := range remove {
+// 				// 	delete(tree.forgottenMsgs, id)
+// 				// }
+// 				// filtered := []ptRcvd{}
+// 				// for _, msg := range tree.receivedMsgs {
+// 				// 	if msg.time.Add(60 * time.Second).After(time.Now()) {
+// 				// 		filtered = append(filtered, msg)
+// 				// 	}
+// 				// }
+// 				// tree.receivedMsgs = filtered
+// 			}
+// 		}
+// 		for _, id := range removeIds {
+// 			delete(p.trees, id)
+// 		}
+// 		p.lock.Unlock()
+// 	}
+// }
 
 // unlocked
 func (p *Plumtree) Join(id, address string) error {
