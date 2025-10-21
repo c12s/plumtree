@@ -113,39 +113,39 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
-		id, ok := p.activeGraft[msg.Metadata.Id]
-		isAG := ok && id == sender.Node.ID
-		isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
-		if !isAG && !isParent && p.parent != nil {
-			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time from", sender.Node.ID, "but have active graft from", id)
-			// treat it as i have
-			p.missingMsgs[string(msg.MsgId)] = append(p.missingMsgs[string(msg.MsgId)], sender)
-			if _, ok := p.timers[string(msg.MsgId)]; !ok {
-				p.timers[string(msg.MsgId)] = struct{}{}
-				go p.setTimer(msg.MsgId)
-			}
+		// id, ok := p.activeGraft[msg.Metadata.Id]
+		// isAG := ok && id == sender.Node.ID
+		// isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
+		// if !isAG && !isParent && p.parent != nil {
+		// 	p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time from", sender.Node.ID, "but have active graft from", id)
+		// 	// treat it as i have
+		// 	p.missingMsgs[string(msg.MsgId)] = append(p.missingMsgs[string(msg.MsgId)], sender)
+		// 	if _, ok := p.timers[string(msg.MsgId)]; !ok {
+		// 		p.timers[string(msg.MsgId)] = struct{}{}
+		// 		go p.setTimer(msg.MsgId)
+		// 	}
+		// } else {
+		p.rcvdAll = append(p.rcvdAll, msgRcvd{
+			time:  time.Now(),
+			from:  sender.Node.ID,
+			msgId: msg.Metadata.Id,
+		})
+		p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
+		p.lastMsg = time.Now().Unix()
+		move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
+		p.parent = &sender
+		p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}, msg: msg})
+		p.lock.Unlock()
+		proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
+		p.lock.Lock()
+		if !proceed {
+			p.forget(msg.MsgId, sender)
 		} else {
-			p.rcvdAll = append(p.rcvdAll, msgRcvd{
-				time:  time.Now(),
-				from:  sender.Node.ID,
-				msgId: msg.Metadata.Id,
-			})
-			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "add sender to eager push peers", sender.Node)
-			p.lastMsg = time.Now().Unix()
-			move(sender, &p.lazyPushPeers, &p.eagerPushPeers)
-			p.parent = &sender
-			p.receivedMsgs = append(p.receivedMsgs, ptRcvd{msgRcvd: msgRcvd{time: time.Now(), from: sender.Node.ID, msgId: msg.Metadata.Id}, msg: msg})
-			p.lock.Unlock()
-			proceed := p.shared.gossipMsgHandler(msg.Metadata, msg.MsgType, msg.Msg, sender)
-			p.lock.Lock()
-			if !proceed {
-				p.forget(msg.MsgId, sender)
-			} else {
-				msg.Round++
-				p.eagerPush(msg, sender.Node)
-				p.lazyPush(msg, sender.Node)
-			}
+			msg.Round++
+			p.eagerPush(msg, sender.Node)
+			p.lazyPush(msg, sender.Node)
 		}
+		// }
 	} else {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)
 		move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
