@@ -2,7 +2,6 @@ package plumtree
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/fnv"
 	"slices"
 	"time"
@@ -28,13 +27,13 @@ func send(payload any, msgType data.MessageType, to transport.Conn) error {
 	// if err != nil {
 	// 	return fmt.Errorf("error serializing %v message: %v", msgType, err)
 	// }
-	err := to.Send(data.Message{
+	to.Send(data.Message{
 		Type:    msgType,
 		Payload: payload,
 	})
-	if err != nil {
-		return fmt.Errorf("error sending %v message: %v", msgType, err)
-	}
+	// if err != nil {
+	// 	return fmt.Errorf("error sending %v message: %v", msgType, err)
+	// }
 	return nil
 }
 
