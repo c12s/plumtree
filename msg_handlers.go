@@ -113,7 +113,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
 	}) {
-		if p.parent != nil {
+		if p.parent != nil && sender.Node.ID != p.parent.Node.ID {
 			p.shared.logger.Println(p.shared.self.ID, "-", "message", msg.MsgId, "received for the first time", "but already has parent", p.parent.Node.ID)
 			move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 			pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
@@ -147,6 +147,9 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 		p.shared.logger.Printf("%s - Removing peer %s from eager push peers due to duplicate message\n", p.shared.self.ID, sender.Node.ID)
 		move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 		pruneMsg := PlumtreePruneMessage{Metadata: msg.Metadata}
+		if p.parent != nil && sender.Node.ID == p.parent.Node.ID {
+			p.parent = nil
+		}
 		err := send(pruneMsg, PRUNE_MSG_TYPE, sender.Conn)
 		if err != nil {
 			p.shared.logger.Println(p.shared.self.ID, "-", "Error sending prune message:", err)
@@ -165,6 +168,9 @@ func (p *Tree) onPrune(_ PlumtreePruneMessage, sender hyparview.Peer) {
 	p.shared.logger.Printf("%s - Processing prune message from peer: %v\n", p.shared.self.ID, sender.Node.ID)
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
+	if p.parent != nil && sender.Node.ID == p.parent.Node.ID {
+		p.parent = nil
+	}
 	p.shared.logger.Println(p.shared.self.ID, "-", "eager push peers", p.eagerPushPeers, "lazy push peers", p.lazyPushPeers)
 }
 
@@ -179,7 +185,7 @@ func (p *Tree) onIHave(msg PlumtreeIHaveMessage, sender hyparview.Peer) {
 		})
 	}
 	// todo: ??
-	move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
+	// move(sender, &p.eagerPushPeers, &p.lazyPushPeers)
 	p.lastMsg = time.Now().Unix()
 	for _, msgId := range msg.MsgIds {
 		if slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
