@@ -3,7 +3,6 @@ package plumtree
 import (
 	"bytes"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/c12s/hyparview/hyparview"
@@ -113,7 +112,7 @@ func (p *Tree) onGossip(msg PlumtreeCustomMessage, sender hyparview.Peer) {
 	p.shared.logger.Println(p.shared.self.ID, "-", "Processing gossip message")
 	if !slices.ContainsFunc(p.receivedMsgs, func(received ptRcvd) bool {
 		return bytes.Equal(msg.MsgId, received.msg.MsgId)
-	}) && !strings.HasSuffix(p.metadata.Id, p.metadata.NodeID()) {
+	}) {
 		// id, ok := p.activeGraft[msg.Metadata.Id]
 		// isAG := ok && id == sender.Node.ID
 		// isParent := p.parent != nil && sender.Node.ID == p.parent.Node.ID
